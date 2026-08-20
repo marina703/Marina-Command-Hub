@@ -1,0 +1,14 @@
+{
+  "allow": {
+    "createFiles": true,
+    "modifyFiles": true,
+    "runCommands": true,
+    "installDependencies": true,
+    "deploy": true
+  },
+  "block": {
+    "deleteFolders": true,
+    "deleteLargeFiles": true,
+    "runDangerousSystemCommands": true
+  }
+}

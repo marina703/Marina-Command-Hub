@@ -1,0 +1,19 @@
+{
+  "provider": "ollama",
+  "model": "qwen2.5:3b",
+  "baseUrl": "http://localhost:11434/v1",
+  "apiKey": "",
+  "geminiApiKey": "",
+  "geminiModel": "gemini-1.5-flash",
+  "copilotApiKey": "",
+  "copilotEndpoint": "https://api.githubcopilot.microsoft.com/v1/chat",
+  "ollamaBaseUrl": "http://localhost:11434",
+  "openaiCompatibleBaseUrl": "http://localhost:11434/v1",
+  "geminiBaseUrl": "https://generativelanguage.googleapis.com/v1beta",
+  "llmTuning": {
+    "keepAlive": "30m",
+    "numCtx": 4096,
+    "numPredict": 1024,
+    "timeoutMs": 30000
+  }
+}

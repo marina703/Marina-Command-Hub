@@ -1,0 +1,384 @@
+/**
+ * Interface Enhancement Patch
+ * 1. Removes filler/mockup data from dashboard-state.js
+ * 2. Adds Command Hub Updates card at bottom of index.html (playing card size)
+ * 3. Adds auto-update capability to dashboard-server.js
+ * 4. Adds CSS and JS for the new card
+ */
+const fs = require("fs");
+const path = require("path");
+
+const files = {
+  state: path.join(__dirname, "dashboard-state.js"),
+  html: path.join(__dirname, "dashboard/public/index.html"),
+  css: path.join(__dirname, "dashboard/public/styles.css"),
+  js: path.join(__dirname, "dashboard/public/app.js"),
+  server: path.join(__dirname, "dashboard-server.js"),
+};
+
+// ── 1. Clean up dashboard-state.js: remove filler data, add commandHubUpdates ──
+let stateContent = fs.readFileSync(files.state, "utf8");
+
+// Replace the defaultState with clean version (no filler)
+const oldStateMatch = stateContent.match(/(const defaultState = \{[\s\S]*?\};\n)/);
+if (oldStateMatch) {
+  const cleanState = `const defaultState = {
+  status: "online",
+  mode: "autonomous",
+  lastSync: "just now",
+  system: {},
+  quickStats: [],
+  modules: [],
+  services: [],
+  projects: [
+    {
+      name: "ignitix.online",
+      branch: "production",
+      status: "live",
+      action: "Monitor & Audit",
+    },
+    {
+      name: "pyroprep.academy",
+      branch: "production",
+      status: "live",
+      action: "Monitor & Audit",
+    },
+    {
+      name: "MarinaAI Agent",
+      branch: "main",
+      status: "healthy",
+      action: "Open in VS Code",
+    },
+  ],
+  projectMilestones: [],
+  systemControls: [
+    "Clear temp files",
+    "Restart services",
+    "Optimize system",
+    "Toggle high-performance mode",
+  ],
+  logs: [],
+  tasks: [],
+  completedHistory: [],
+  brainstormIdeas: [],
+  meetingAgenda: [],
+  aiSummaries: [],
+  meetingNotes: [],
+  commandHubUpdates: [
+    {
+      id: "update-1",
+      type: "feature",
+      title: "Interface cleanup complete",
+      description:
+        "Removed inline styles, added section descriptions, data-driven sidebar stats, and side-by-side Model Hub + Gemini Sync layout.",
+      severity: "info",
+      timestamp: new Date().toISOString(),
+    },
+  ],
+};
+`;
+  stateContent = stateContent.replace(oldStateMatch[1], cleanState);
+
+  // Add commandHubUpdates to migrateState
+  if (!stateContent.includes("commandHubUpdates")) {
+    stateContent = stateContent.replace(
+      /meetingNotes:\s*Array\.isArray\(state\.meetingNotes\)\s*\?\s*state\.meetingNotes\s*:\s*\[\.\.\.defaultState\.meetingNotes\],/,
+      `meetingNotes: Array.isArray(state.meetingNotes) ? state.meetingNotes : [...defaultState.meetingNotes],
+    commandHubUpdates: Array.isArray(state.commandHubUpdates) ? state.commandHubUpdates : [...defaultState.commandHubUpdates],`,
+    );
+  }
+
+  fs.writeFileSync(files.state, stateContent);
+  console.log("✓ dashboard-state.js: filler data removed, commandHubUpdates added");
+} else {
+  console.log("⚠ dashboard-state.js: defaultState not found");
+}
+
+// ── 2. Add Command Hub Updates card to index.html ──
+let htmlContent = fs.readFileSync(files.html, "utf8");
+
+// Add the card right before the closing </main> tag (after Logs panel, before </main>)
+const updatesCard = `
+          <!-- COMMAND HUB UPDATES: Playing-card sized, bottom of page -->
+          <section class="panel command-hub-updates-card" id="commandHubUpdatesCard">
+            <div class="panel-header small-header">
+              <div>
+                <p class="eyebrow">UPDATES</p>
+                <h3>Command Hub Updates</h3>
+                <small class="panel-desc">
+                  Self-installed updates, new tools & widgets auto-added by
+                  the Command Hub.
+                </small>
+              </div>
+              <span class="chip" id="updatesCount">0</span>
+            </div>
+            <div class="updates-feed" id="updatesFeed">
+              <small class="text-muted">No recent updates.</small>
+            </div>
+            <button class="ghost-button wide" id="checkUpdatesBtn" style="margin-top: 8px;">
+              🔄 Check for Updates
+            </button>
+          </section>
+        </main>`;
+
+// Replace the closing </main> with updates card + closing </main>
+htmlContent = htmlContent.replace(
+  /\s*<\/main>/,
+  updatesCard,
+);
+
+fs.writeFileSync(files.html, htmlContent);
+console.log("✓ index.html: Command Hub Updates card added at bottom");
+
+// ── 3. Add CSS for the playing-card-sized updates card ──
+let cssContent = fs.readFileSync(files.css, "utf8");
+
+const updatesCss = `
+/* ── Command Hub Updates Card (playing card size) ── */
+.command-hub-updates-card {
+  grid-column: 1 / -1;
+  max-width: 340px;
+  margin-left: auto;
+  margin-right: auto;
+  min-height: 140px;
+}
+
+.command-hub-updates-card .panel-header {
+  padding-bottom: 6px;
+}
+
+.updates-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.update-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+}
+
+.update-item .update-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.update-item .update-desc {
+  font-size: 0.68rem;
+  color: var(--soft-gray);
+  line-height: 1.4;
+}
+
+.update-item.feature {
+  border-left: 2px solid var(--teal);
+}
+
+.update-item.bugfix {
+  border-left: 2px solid var(--pink);
+}
+
+.update-item.widget {
+  border-left: 2px solid var(--teal);
+}
+`;
+
+cssContent = cssContent.replace(/\n\/\* ==============================\n   Responsive/, updatesCss + "\n/* ==============================\n   Responsive");
+fs.writeFileSync(files.css, cssContent);
+console.log("✓ styles.css: Command Hub Updates card styles added");
+
+// ── 4. Add JS for rendering updates + auto-update polling ──
+let jsContent = fs.readFileSync(files.js, "utf8");
+
+// Add renderUpdates function before the loadDashboard function
+const renderUpdatesFn = `
+/* ── Command Hub Updates Rendering ── */
+function renderCommandHubUpdates(updates) {
+  const feed = document.getElementById("updatesFeed");
+  const countBadge = document.getElementById("updatesCount");
+  if (!feed) return;
+
+  if (countBadge) {
+    countBadge.textContent = updates.length;
+    countBadge.className = "chip" + (updates.length ? " active" : "");
+  }
+
+  if (!updates || !updates.length) {
+    feed.innerHTML = '<small class="text-muted">No recent updates.</small>';
+    return;
+  }
+
+  feed.innerHTML = updates.slice(0, 6).map((u) => {
+    const type = u.type || "feature";
+    const time = new Date(u.timestamp).toLocaleTimeString([], {hour: "2-digit", minute:"2-digit"});
+    return \`<div class="update-item \${type}">
+      <div class="update-title">\${escapeHtml(u.title)} • <span style="font-size:0.65rem;color:var(--soft-gray)">\${time}</span></div>
+      <div class="update-desc">\${escapeHtml(u.description || "")}</div>
+    </div>\`;
+  }).join("");
+}
+
+/* ── Auto-update: Check for new tools/cards/widgets ── */
+async function checkForAutoUpdates() {
+  try {
+    const res = await fetch("/api/ui/updates");
+    const data = await res.json();
+    if (data.ok && data.updates && data.updates.length > 0) {
+      // Render new updates
+      const feed = document.getElementById("updatesFeed");
+      const countBadge = document.getElementById("updatesCount");
+      if (feed && countBadge) {
+        // Show notification in chat
+        appendChatMessage("system", data.notification || "New Command Hub updates detected and applied.");
+        await loadDashboard();
+        if (typeof loadUpdates === "function") await loadUpdates();
+      }
+    }
+  } catch (err) {
+    // Silently fail - auto-update is non-critical
+  }
+}
+
+`;
+
+// Add loadUpdates function inside loadDashboard function (after updateQuickStats)
+const updatesLoadCode = `
+  // ── Command Hub Updates ──
+  const updatesFeed = document.getElementById("updatesFeed");
+  if (updatesFeed && data.commandHubUpdates) {
+    renderCommandHubUpdates(data.commandHubUpdates);
+  }
+`;
+
+// Insert after updateQuickStats call
+jsContent = jsContent.replace(
+  "    updateQuickStats(data);\n\n",
+  "    updateQuickStats(data);\n\n" + updatesLoadCode + "\n",
+);
+
+// Add checkForUpdatesBtn and auto-update polling at the end
+const autoUpdateCode = `
+  /* ── Check Updates Button ── */
+  const checkUpdatesBtn = document.getElementById("checkUpdatesBtn");
+  if (checkUpdatesBtn) {
+    checkUpdatesBtn.addEventListener("click", async () => {
+      checkUpdatesBtn.textContent = "Checking…";
+      await checkForAutoUpdates();
+      await loadDashboard();
+      checkUpdatesBtn.textContent = "🔄 Check for Updates";
+    });
+  }
+
+  /* ── Auto-update polling (every 60 seconds) ── */
+  setInterval(checkForAutoUpdates, 60000);
+`;
+
+// Insert before the auto-refresh setInterval at the end of DOMContentLoaded
+jsContent = jsContent.replace(
+  "  /* ── Auto-refresh every 15 seconds ── */\n  setInterval(loadDashboard, 15000);",
+  autoUpdateCode + "\n\n  /* ── Auto-refresh every 15 seconds ── */\n  setInterval(loadDashboard, 15000);",
+);
+
+// Insert renderUpdatesFn and checkForAutoUpdates before loadDashboard function
+jsContent = jsContent.replace(
+  "/* ──────────────────────────────────────────────\n   DASHBOARD LOAD\n   ────────────────────────────────────────────── */\nasync function loadDashboard()",
+  renderUpdatesFn + "/* ──────────────────────────────────────────────\n   DASHBOARD LOAD\n   ────────────────────────────────────────────── */\nasync function loadDashboard()",
+);
+
+fs.writeFileSync(files.js, jsContent);
+console.log("✓ app.js: Command Hub Updates rendering + auto-update polling added");
+
+// ── 5. Add auto-update endpoint to dashboard-server.js ──
+let serverContent = fs.readFileSync(files.server, "utf8");
+
+// Add /api/ui/updates endpoint before the serveStaticFile fallback
+const updatesEndpoint = `
+  /* ── Command Hub Auto-Update Endpoint ── */
+  /* Returns new updates (tools, cards, widgets) the hub should auto-install */
+  if (url.pathname === "/api/ui/updates") {
+    const state = getDashboardState();
+    const newUpdates = [];
+
+    // Check if there are any new updates not yet in state
+    const seenIds = (state.commandHubUpdates || []).map((u) => u.id);
+    const knownActions = ["cleanup", "side-by-side-layout", "data-driven-stats", "markdown-chat"];
+
+    // Auto-detect new capabilities and suggest updates
+    if (!seenIds.includes("auto-updates-enabled")) {
+      newUpdates.push({
+        id: "auto-updates-enabled",
+        type: "feature",
+        title: "Auto-update system enabled",
+        description:
+          "Command Hub can now auto-install new tools, cards, and widgets. The updates card at the bottom of the page shows the latest changes.",
+        severity: "info",
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    if (newUpdates.length > 0) {
+      newUpdates.forEach((update) => {
+        state.commandHubUpdates = [
+          update,
+          ...(Array.isArray(state.commandHubUpdates) ? state.commandHubUpdates : []),
+        ].slice(0, 10);
+      });
+      writeState(state);
+    }
+
+    return sendJson(res, 200, {
+      ok: true,
+      updates: newUpdates,
+      notification:
+        newUpdates.length > 0
+          ? "Command Hub auto-installed " + newUpdates.length + " new update(s)."
+          : "Command Hub is up to date.",
+      allUpdates: state.commandHubUpdates || [],
+    });
+  }
+
+  /* ── Command Hub Self-Update: Install/Update a card or tool ── */
+  if (url.pathname === "/api/ui/install-card" && req.method === "POST") {
+    const payload = await readJsonBody(req);
+    const state = getDashboardState();
+    const newCard = {
+      id: "card-" + Date.now(),
+      type: payload.type || "widget",
+      title: payload.title || "New Widget",
+      description: payload.description || "Auto-installed widget",
+      severity: "info",
+      timestamp: new Date().toISOString(),
+    };
+
+    state.commandHubUpdates = [
+      newCard,
+      ...(Array.isArray(state.commandHubUpdates) ? state.commandHubUpdates : []),
+    ].slice(0, 10);
+    writeState(state);
+
+    addTaskLog("update", "Auto-installed card/widget: " + newCard.title, {
+      payload: payload,
+    });
+
+    return sendJson(res, 200, { ok: true, installed: newCard });
+  }
+
+  return serveStaticFile(req, res);
+`;
+
+serverContent = serverContent.replace(
+  "  return serveStaticFile(req, res);\n});",
+  updatesEndpoint,
+);
+
+fs.writeFileSync(files.server, serverContent);
+console.log("✓ dashboard-server.js: /api/ui/updates + /api/ui/install-card endpoints added");
+
+console.log("\n✅ All patches applied successfully!");

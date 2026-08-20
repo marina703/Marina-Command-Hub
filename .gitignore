@@ -1,0 +1,9 @@
+﻿node_modules
+.env
+.env.local
+dist
+.out
+.next
+.DS_Store
+.vscode
+supabase/.temp

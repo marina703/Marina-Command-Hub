@@ -1,0 +1,59 @@
+{
+  "name": "ollama-native-chat",
+  "displayName": "Ollama Native Chat",
+  "description": "Bridge local Ollama models into VS Code's native chat view and inline autocomplete.",
+  "version": "1.1.0",
+  "publisher": "marina",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ollamaNativeChat.ping",
+        "title": "Ollama Native Chat: Ping Ollama"
+      },
+      {
+        "command": "ollamaNativeChat.selectModel",
+        "title": "Ollama Native Chat: Select Chat Model"
+      },
+      {
+        "command": "ollamaNativeChat.selectAutocompleteModel",
+        "title": "Ollama Native Chat: Select Autocomplete Model"
+      }
+    ],
+    "configuration": {
+      "title": "Ollama Native Chat",
+      "properties": {
+        "ollamaNativeChat.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Base URL of the Ollama server."
+        },
+        "ollamaNativeChat.chatModel": {
+          "type": "string",
+          "default": "llama3.1:8b",
+          "description": "Ollama model used for native chat."
+        },
+        "ollamaNativeChat.autocompleteModel": {
+          "type": "string",
+          "default": "qwen2.5-coder:latest",
+          "description": "Ollama model used for inline autocomplete."
+        },
+        "ollamaNativeChat.autocompleteEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable inline autocomplete from Ollama."
+        }
+      }
+    }
+  }
+}

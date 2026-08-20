@@ -1,0 +1,238 @@
+{
+  "status": "online",
+  "mode": "autonomous",
+  "lastSync": "12:55 AM",
+  "system": {
+    "cpu": 0,
+    "ram": 0,
+    "disk": 0,
+    "npu": 0,
+    "network": 0
+  },
+  "quickStats": [
+    {
+      "label": "Active Tasks",
+      "value": "0",
+      "accent": "teal"
+    },
+    {
+      "label": "AI Calls",
+      "value": "0",
+      "accent": "pink"
+    },
+    {
+      "label": "Deployments",
+      "value": "0",
+      "accent": "teal"
+    },
+    {
+      "label": "Alerts",
+      "value": "0",
+      "accent": "pink"
+    }
+  ],
+  "modules": [],
+  "services": [
+    {
+      "name": "Ollama",
+      "status": "online",
+      "details": "local model runtime"
+    },
+    {
+      "name": "Gemini API",
+      "status": "online",
+      "details": "Google AI connected"
+    }
+  ],
+  "projects": [
+    {
+      "name": "MarinaAI Agent",
+      "branch": "main",
+      "status": "healthy",
+      "action": "Open in VS Code"
+    }
+  ],
+  "projectMilestones": [],
+  "systemControls": [
+    "Clear temp files",
+    "Restart services",
+    "Optimize system",
+    "Toggle high-performance mode"
+  ],
+  "logs": [
+    "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+    "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+    "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+    "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+    "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+    "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+    "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+    "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+    "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+    "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored)."
+  ],
+  "tasks": [
+    {
+      "id": 1787212501963.9253,
+      "type": "automation",
+      "message": "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+      "status": "completed",
+      "createdAt": "2026-08-20T07:55:01.963Z"
+    },
+    {
+      "id": 1787212441956.3223,
+      "type": "automation",
+      "message": "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+      "status": "completed",
+      "createdAt": "2026-08-20T07:54:01.956Z"
+    },
+    {
+      "id": 1787212381946.58,
+      "type": "automation",
+      "message": "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+      "status": "completed",
+      "createdAt": "2026-08-20T07:53:01.946Z"
+    },
+    {
+      "id": 1787212321944.9382,
+      "type": "automation",
+      "message": "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+      "status": "completed",
+      "createdAt": "2026-08-20T07:52:01.944Z"
+    },
+    {
+      "id": 1787212261934.1292,
+      "type": "automation",
+      "message": "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+      "status": "completed",
+      "createdAt": "2026-08-20T07:51:01.934Z"
+    },
+    {
+      "id": 1787212201928.4846,
+      "type": "automation",
+      "message": "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+      "status": "completed",
+      "createdAt": "2026-08-20T07:50:01.928Z"
+    },
+    {
+      "id": 1787212141917.389,
+      "type": "automation",
+      "message": "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+      "status": "completed",
+      "createdAt": "2026-08-20T07:49:01.917Z"
+    },
+    {
+      "id": 1787209233077.5762,
+      "type": "automation",
+      "message": "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+      "status": "completed",
+      "createdAt": "2026-08-20T07:00:33.077Z"
+    },
+    {
+      "id": 1787209173065.9158,
+      "type": "automation",
+      "message": "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+      "status": "completed",
+      "createdAt": "2026-08-20T06:59:33.065Z"
+    },
+    {
+      "id": 1787209113048.8037,
+      "type": "automation",
+      "message": "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+      "status": "completed",
+      "createdAt": "2026-08-20T06:58:33.048Z"
+    },
+    {
+      "id": 1787209053051.6145,
+      "type": "automation",
+      "message": "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+      "status": "completed",
+      "createdAt": "2026-08-20T06:57:33.051Z"
+    },
+    {
+      "id": 1787208993047.3584,
+      "type": "automation",
+      "message": "Autonomous background cycle complete (8 files indexed • 2 portfolio sites monitored).",
+      "status": "completed",
+      "createdAt": "2026-08-20T06:56:33.047Z"
+    }
+  ],
+  "completedHistory": [],
+  "brainstormIdeas": [
+    {
+      "id": "idea-1787107661126",
+      "title": "Dynamic AI Lead Concierge for ignitix.online",
+      "category": "Revenue",
+      "owner": "Ava (Strategist Sub-Agent)",
+      "description": "Interactive AI onboarding module converting visitors directly into enrolled users on ignitix and pyroprep."
+    },
+    {
+      "id": "idea-1787107601127",
+      "title": "Dynamic AI Lead Concierge for ignitix.online",
+      "category": "Revenue",
+      "owner": "Ava (Strategist Sub-Agent)",
+      "description": "Interactive AI onboarding module converting visitors directly into enrolled users on ignitix and pyroprep."
+    },
+    {
+      "id": "idea-1787107541121",
+      "title": "Dynamic AI Lead Concierge for ignitix.online",
+      "category": "Revenue",
+      "owner": "Ava (Strategist Sub-Agent)",
+      "description": "Interactive AI onboarding module converting visitors directly into enrolled users on ignitix and pyroprep."
+    },
+    {
+      "id": "idea-1787107481112",
+      "title": "Dynamic AI Lead Concierge for ignitix.online",
+      "category": "Revenue",
+      "owner": "Ava (Strategist Sub-Agent)",
+      "description": "Interactive AI onboarding module converting visitors directly into enrolled users on ignitix and pyroprep."
+    }
+  ],
+  "meetingAgenda": [],
+  "aiSummaries": [
+    {
+      "id": "summary-1787212501960",
+      "title": "AI operations update",
+      "summary": "The system is running with 12 active tasks, 0 completed wins, and 4 ideation streams. The pipeline is healthy and ready for the next cycle.",
+      "owner": "AI Team",
+      "generatedAt": "2026-08-20T07:55:01.960Z"
+    },
+    {
+      "id": "summary-1787212441955",
+      "title": "AI operations update",
+      "summary": "The system is running with 12 active tasks, 0 completed wins, and 4 ideation streams. The pipeline is healthy and ready for the next cycle.",
+      "owner": "AI Team",
+      "generatedAt": "2026-08-20T07:54:01.955Z"
+    },
+    {
+      "id": "summary-1787212381943",
+      "title": "AI operations update",
+      "summary": "The system is running with 12 active tasks, 0 completed wins, and 4 ideation streams. The pipeline is healthy and ready for the next cycle.",
+      "owner": "AI Team",
+      "generatedAt": "2026-08-20T07:53:01.943Z"
+    },
+    {
+      "id": "summary-1787212321942",
+      "title": "AI operations update",
+      "summary": "The system is running with 12 active tasks, 0 completed wins, and 4 ideation streams. The pipeline is healthy and ready for the next cycle.",
+      "owner": "AI Team",
+      "generatedAt": "2026-08-20T07:52:01.942Z"
+    },
+    {
+      "id": "summary-1787212261932",
+      "title": "AI operations update",
+      "summary": "The system is running with 12 active tasks, 0 completed wins, and 4 ideation streams. The pipeline is healthy and ready for the next cycle.",
+      "owner": "AI Team",
+      "generatedAt": "2026-08-20T07:51:01.932Z"
+    },
+    {
+      "id": "summary-1787212201927",
+      "title": "AI operations update",
+      "summary": "The system is running with 12 active tasks, 0 completed wins, and 4 ideation streams. The pipeline is healthy and ready for the next cycle.",
+      "owner": "AI Team",
+      "generatedAt": "2026-08-20T07:50:01.927Z"
+    }
+  ],
+  "meetingNotes": [],
+  "commandHubUpdates": []
+}

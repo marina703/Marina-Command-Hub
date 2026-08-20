@@ -1,0 +1,14 @@
+
+> marinaai-dashboard@1.0.0 dev
+> next dev -p 3001
+
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3001
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 1932ms
+ ○ Compiling / ...
+ ✓ Compiled / in 3.3s (543 modules)
+ GET / 200 in 3583ms
+ ✓ Compiled in 175ms (237 modules)
