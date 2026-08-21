@@ -81,9 +81,17 @@ async function runAutonomousLoop() {
     const context = collectProjectContext();
     const count = (context.match(/File:/g) || []).length;
 
-    // Signal & Opportunity Radar: check queue density & domains
+    // Signal & Opportunity Radar: check queue density & domains.
+    // Only seed an idea if the exact title is NOT already present, so the
+    // scheduler never floods the board with duplicate entries (zero redundancy).
     const state = readState();
-    if (!state.brainstormIdeas || state.brainstormIdeas.length < 4) {
+    const existingIdeas = Array.isArray(state.brainstormIdeas)
+      ? state.brainstormIdeas
+      : [];
+    const hasSeedIdea = existingIdeas.some(
+      (i) => i.title === "Dynamic AI Lead Concierge for ignitix.online",
+    );
+    if (!hasSeedIdea) {
       addIdea({
         title: "Dynamic AI Lead Concierge for ignitix.online",
         category: "Revenue",
@@ -97,8 +105,11 @@ async function runAutonomousLoop() {
       );
     }
 
-    // Refresh dashboard summary
-    generateDashboardSummary();
+    // Refresh dashboard summary only if none exists yet, so the summary feed
+    // does not accumulate identical "AI operations update" entries every cycle.
+    if (!Array.isArray(state.aiSummaries) || state.aiSummaries.length === 0) {
+      generateDashboardSummary();
+    }
     addTaskLog(
       "automation",
       "Autonomous background cycle complete (" + count + " files indexed • 2 portfolio sites monitored)."

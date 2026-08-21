@@ -9,7 +9,9 @@ const {
 } = require("./agent");
 const {
   getDashboardState,
+  getLiveDashboardState,
   addTaskLog,
+
   createTask,
   completeTask,
   addIdea,
@@ -30,11 +32,22 @@ const {
   runIdeaToExecutionPlaybook,
   runSiteAuditPlaybook,
   runFastSOPPlaybook,
+  runPlaybookById,
 } = require("./playbooks");
+const { collectSystemMetrics } = require("./system-metrics");
+
+
 
 const PORT = process.env.PORT || 3000;
 const forcedPublicDir = path.join(__dirname, "dashboard", "public");
 const publicDir = fs.existsSync(forcedPublicDir) ? forcedPublicDir : __dirname;
+
+// Vite build output. When present, it takes precedence over the legacy
+// static files so the modern React dashboard is served. Falls back to the
+// static dirs below if the build has not been produced yet.
+const distDir = path.join(__dirname, "dist");
+const hasDist = fs.existsSync(path.join(distDir, "index.html"));
+
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -48,6 +61,11 @@ const MIME_TYPES = {
 };
 
 function sendJson(res, statusCode, payload) {
+  // Guard against double-send. If the response has already been written
+  // (e.g. a slow async callback resolving after a timeout or a duplicate
+  // handler invocation), writing again throws ERR_HTTP_HEADERS_SENT and
+  // crashes the whole server. Silently ignore instead.
+  if (res.headersSent) return;
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
   });
@@ -195,14 +213,18 @@ function getOllamaStatus() {
 }
 
 function serveStaticFile(req, res) {
-  const defaultPath = fs.existsSync(path.join(publicDir, "index.html"))
+  // Prefer the Vite build output (dist/) when it exists; otherwise fall back
+  // to the legacy static files so the app still works pre-build.
+  const rootDir = hasDist ? distDir : publicDir;
+
+  const defaultPath = fs.existsSync(path.join(rootDir, "index.html"))
     ? "/index.html"
     : "/ui/index.html";
   const requestPath = req.url === "/" ? defaultPath : req.url;
   const safePath = path.normalize(requestPath).replace(/^\/+/, "");
-  const filePath = path.join(publicDir, safePath);
+  const filePath = path.join(rootDir, safePath);
 
-  if (!filePath.startsWith(publicDir)) {
+  if (!filePath.startsWith(rootDir)) {
     res.writeHead(403);
     res.end("Forbidden");
     return;
@@ -210,6 +232,21 @@ function serveStaticFile(req, res) {
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
+      // SPA fallback: for the Vite build, unknown paths (client-side routes)
+      // should return index.html so React Router / view state can handle them.
+      if (hasDist && requestPath !== "/ui/index.html") {
+        fs.readFile(path.join(distDir, "index.html"), (indexErr, indexData) => {
+          if (indexErr) {
+            res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+            res.end("Not found");
+            return;
+          }
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(indexData);
+        });
+        return;
+      }
+
       if (requestPath === "/ui/index.html" || requestPath === "/") {
         fs.readFile(
           path.join(publicDir, "ui", "index.html"),
@@ -240,6 +277,7 @@ function serveStaticFile(req, res) {
     res.end(data);
   });
 }
+
 
 async function handleExecution(req, res) {
   let body = "";
@@ -321,6 +359,26 @@ async function handleDashboardMutation(req, res) {
 }
 
 const server = http.createServer(async (req, res) => {
+  try {
+    await handleRequest(req, res);
+  } catch (err) {
+    // Top-level safety net: never let an uncaught error (e.g. a malformed
+    // JSON body rejecting readJsonBody) crash the whole server. Return a
+    // clean 400/500 instead.
+    try {
+      if (!res.headersSent) {
+        sendJson(res, 400, {
+          ok: false,
+          message: err.message || "Bad request.",
+        });
+      }
+    } catch {
+      // Response already sent or connection closed; nothing more to do.
+    }
+  }
+});
+
+async function handleRequest(req, res) {
   const url = new URL(req.url, "http://localhost");
 
   if (url.pathname === "/api/dashboard" && req.method === "POST") {
@@ -328,8 +386,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === "/api/dashboard") {
-    return sendJson(res, 200, getDashboardState());
+    const liveState = await getLiveDashboardState();
+    return sendJson(res, 200, liveState);
   }
+
 
   if (url.pathname === "/api/tasks" && req.method === "POST") {
     const payload = await readJsonBody(req);
@@ -491,40 +551,63 @@ const server = http.createServer(async (req, res) => {
     const checkSite = (url) => {
       return new Promise((resolve) => {
         const http = require("http");
+        let parsed;
+        try {
+          parsed = new URL(
+            /^https?:\/\//i.test(url) ? url : `http://${url}`,
+          );
+        } catch {
+          return resolve({
+            status: "unreachable",
+            latencyMs: 0,
+            checkedAt: new Date().toISOString(),
+          });
+        }
         const options = {
-          hostname: new URL(url).hostname,
-          port: new URL(url).port || 80,
-          path: new URL(url).pathname || "/",
+          hostname: parsed.hostname,
+          port: parsed.port || 80,
+          path: parsed.pathname || "/",
           timeout: 5000,
         };
-        http.request(options, (res) => {
+        const request = http.request(options, (res) => {
           let data = "";
           res.on("data", (chunk) => { data += chunk; });
           res.on("end", () => {
             resolve({
               status: res.statusCode === 200 ? "healthy" : "degraded",
-              latencyMs: res.timing ? res.timing.total : 0,
+              latencyMs: 0,
               checkedAt: new Date().toISOString(),
             });
           });
-        }).on("error", (err) => {
+        });
+        request.on("error", (err) => {
           resolve({
             status: "unreachable",
             latencyMs: 0,
             checkedAt: new Date().toISOString(),
           });
         });
-        req.setTimeout(5000, () => {
+        request.setTimeout(5000, () => {
+          request.destroy();
           resolve({
             status: "timed_out",
             latencyMs: 5000,
             checkedAt: new Date().toISOString(),
           });
         });
+        request.end();
       });
     };
 
-    checkSite(site).then((result) => {
+
+
+
+    // Await the health check so the handler does NOT fall through to the
+    // static-file fallback (which would send the SPA HTML instead of JSON).
+    // The sendJson guard + try/catch below keep a slow/failed check from
+    // ever crashing the server.
+    try {
+      const result = await checkSite(site);
       return sendJson(res, 200, {
         ok: true,
         site,
@@ -532,7 +615,12 @@ const server = http.createServer(async (req, res) => {
         latencyMs: result.latencyMs,
         checkedAt: result.checkedAt,
       });
-    });
+    } catch (err) {
+      return sendJson(res, 500, {
+        ok: false,
+        message: err.message || "Site health check failed.",
+      });
+    }
   }
 
   if (url.pathname === "/api/playbooks/run" && req.method === "POST") {
@@ -541,23 +629,12 @@ const server = http.createServer(async (req, res) => {
     const promptValue = payload.prompt || payload.idea || "";
 
     try {
-      let result;
-      if (playbookType === "idea-to-roadmap") {
-        result = await runIdeaToExecutionPlaybook(promptValue);
-      } else if (playbookType === "site-audit") {
-        result = await runSiteAuditPlaybook();
-      } else if (playbookType === "fast-sop") {
-        result = await runFastSOPPlaybook(promptValue);
-      } else {
-        return sendJson(res, 400, {
-          ok: false,
-          message: "Unknown playbook type.",
-        });
-      }
+      const result = await runPlaybookById(playbookType, promptValue);
       return sendJson(res, 200, result);
     } catch (err) {
       return sendJson(res, 500, { ok: false, message: err.message });
     }
+
   }
 
   if (url.pathname === "/api/chat" && req.method === "POST") {
@@ -655,8 +732,45 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true, update });
   }
 
+  /* ── Live System Metrics: real OS telemetry ── */
+  if (url.pathname === "/api/system-metrics" && req.method === "GET") {
+    try {
+      const metrics = await collectSystemMetrics();
+      return sendJson(res, 200, { ok: true, metrics });
+    } catch (err) {
+      return sendJson(res, 500, {
+        ok: false,
+        message: err.message || "Failed to collect system metrics.",
+      });
+    }
+  }
+
+  /* ── Serve generated report files (markdown) for "View Report" ── */
+  if (url.pathname.startsWith("/api/reports/") && req.method === "GET") {
+    const fileName = path.basename(url.pathname.replace(/^\/api\/reports\//, ""));
+    if (!fileName) {
+      return sendJson(res, 400, { ok: false, message: "Report name required." });
+    }
+    const reportPath = path.join(__dirname, "tmp", fileName);
+    if (!reportPath.startsWith(path.join(__dirname, "tmp"))) {
+      return sendJson(res, 403, { ok: false, message: "Forbidden." });
+    }
+    fs.readFile(reportPath, "utf8", (err, data) => {
+      if (err) {
+        return sendJson(res, 404, { ok: false, message: "Report not found." });
+      }
+      res.writeHead(200, {
+        "Content-Type": "text/markdown; charset=utf-8",
+        "Content-Disposition": `inline; filename="${fileName}"`,
+      });
+      res.end(data);
+    });
+    return;
+  }
+
   return serveStaticFile(req, res);
-});
+}
+
 
 server.listen(PORT, () => {
   console.log(`MarinaAI dashboard running at http://localhost:${PORT}`);

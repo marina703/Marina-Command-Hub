@@ -426,7 +426,9 @@ async function askLLM(message, options = {}) {
       baseUrl: config.ollamaBaseUrl || "http://localhost:11434",
       model: ollamaModel,
       message: enrichedMessage,
+      options,
     });
+
 
     if (result.rawText || (result.instructions && result.instructions.length > 0)) {
       return options.includeRaw ? result : (result.instructions.length > 0 ? result.instructions : fallbackInstructions);

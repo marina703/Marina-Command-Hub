@@ -1,0 +1,17 @@
+# Logs
+*.log
+logs/
+
+# Runtime-generated reports (playbook outputs)
+tmp/
+
+# Vite / TypeScript build cache
+*.tsbuildinfo
+.vite/
+
+# Node modules
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db

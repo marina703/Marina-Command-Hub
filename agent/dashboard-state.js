@@ -21,18 +21,9 @@ const defaultState = {
     { label: "Alerts", value: "0", accent: "pink" },
   ],
   modules: [],
-  services: [
-    { name: "Ollama", status: "online", details: "local model runtime" },
-    { name: "Gemini API", status: "online", details: "Google AI connected" },
-  ],
-  projects: [
-    {
-      name: "MarinaAI Agent",
-      branch: "main",
-      status: "healthy",
-      action: "Open in VS Code",
-    },
-  ],
+  services: [],
+  projects: [],
+
   projectMilestones: [],
   systemControls: [
     "Clear temp files",
@@ -191,6 +182,48 @@ function writeState(state) {
 function getDashboardState() {
   return readState();
 }
+
+/**
+ * Merge live OS telemetry into the dashboard state so the Command Hub
+ * always reflects real CPU / memory / disk / network / process / uptime
+ * values instead of placeholder zeros. Falls back to the persisted state
+ * if metrics cannot be collected.
+ */
+async function getLiveDashboardState() {
+  const state = readState();
+  try {
+    const { collectSystemMetrics } = require("./system-metrics");
+    const metrics = await collectSystemMetrics();
+    if (metrics) {
+      state.system = {
+        cpu: Math.round(metrics.cpu.percent),
+        ram: Math.round(metrics.memory.percent),
+        disk: Math.round(metrics.disk.percent),
+        npu: 0,
+        network: metrics.network.downloadMbps,
+        processes: metrics.processes.count,
+        uptime: metrics.uptime.human,
+        hostname: metrics.hostname,
+        platform: metrics.platform,
+      };
+      state.quickStats = [
+        { label: "Active Tasks", value: String((state.tasks || []).length), accent: "teal" },
+        { label: "CPU", value: `${Math.round(metrics.cpu.percent)}%`, accent: "pink" },
+        { label: "Memory", value: `${Math.round(metrics.memory.percent)}%`, accent: "teal" },
+        { label: "Processes", value: String(metrics.processes.count), accent: "pink" },
+      ];
+      state.lastSync = new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+  } catch {
+    /* metrics unavailable — keep persisted state */
+  }
+  return state;
+}
+
+
 
 function addTaskLog(type, message, details = {}) {
   const state = readState();
@@ -402,7 +435,9 @@ module.exports = {
   readState,
   writeState,
   getDashboardState,
+  getLiveDashboardState,
   addTaskLog,
+
   createTask,
   completeTask,
   addIdea,
