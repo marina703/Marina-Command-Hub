@@ -772,8 +772,25 @@ async function handleRequest(req, res) {
 }
 
 
-server.listen(PORT, () => {
-  console.log(`MarinaAI dashboard running at http://localhost:${PORT}`);
-  startScheduler(60000);
-  startVoiceWatcher();
-});
+// Export the request handler for reuse by Vercel serverless functions
+// (api/index.js) and for testing, without starting the HTTP server.
+module.exports = {
+  handleRequest,
+  sendJson,
+  readJsonBody,
+  serveStaticFile,
+  MIME_TYPES,
+};
+
+// Only start the standalone HTTP server + background schedules when this
+// file is executed directly (node dashboard-server.js). When imported by
+// the Vercel serverless function (api/index.js) the module loads without
+// binding a port or spawning background timers.
+if (require.main === module) {
+  const server = http.createServer(handleRequest);
+  server.listen(PORT, () => {
+    console.log(`MarinaAI dashboard running at http://localhost:${PORT}`);
+    startScheduler(60000);
+    startVoiceWatcher();
+  });
+}
