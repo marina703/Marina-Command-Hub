@@ -630,7 +630,11 @@ async function handleRequest(req, res) {
 
     try {
       const result = await runPlaybookById(playbookType, promptValue);
-      return sendJson(res, 200, result);
+      // Respect the dispatch guard: if the playbook id was unknown the
+      // dispatcher returns statusCode: 400 so the client gets a real
+      // HTTP error instead of a silent 200.
+      const status = result && result.statusCode ? result.statusCode : 200;
+      return sendJson(res, status, result);
     } catch (err) {
       return sendJson(res, 500, { ok: false, message: err.message });
     }

@@ -481,8 +481,60 @@ async function runGenericPlaybook(playbookId, promptValue) {
 
 }
 
+/**
+ * The full canonical registry of all 20 supported playbooks / one-click
+ * tools. Used to validate incoming ids and reject anything unknown with a
+ * clean 400-style response instead of silently falling through.
+ */
+const KNOWN_PLAYBOOK_IDS = new Set([
+  // Legacy / specialized
+  "idea-to-roadmap",
+  "site-audit",
+  "fast-sop",
+  // Rapid Fire (14)
+  "next-steps",
+  "daily-ideas",
+  "monetization-map",
+  "marketing-playbook",
+  "opportunity-scan",
+  "execution-map",
+  "business-proposals",
+  "strategy-brief",
+  "generate-coalition",
+  "audit-site",
+  "logo-sketch",
+  "video-script",
+  "write-story-report",
+  "run-playbook",
+  // One-Click (6)
+  "market-position",
+  "competitor-snapshot",
+  "audience-persona",
+  "trend-pulse",
+  "offer-angle",
+  "funnel-weakpoint",
+  // New modules
+  "business-idea-generator",
+  "monetization-generator",
+  "required-tools",
+]);
+
 /** Dispatch any playbook id to its handler. */
 async function runPlaybookById(playbookId, promptValue) {
+  if (!playbookId || typeof playbookId !== "string") {
+    return {
+      ok: false,
+      statusCode: 400,
+      message: "Playbook id is required.",
+    };
+  }
+  if (!KNOWN_PLAYBOOK_IDS.has(playbookId)) {
+    return {
+      ok: false,
+      statusCode: 400,
+      message: `Unknown playbook: "${playbookId}". Supported: ${Array.from(KNOWN_PLAYBOOK_IDS).sort().join(", ")}`,
+    };
+  }
   if (playbookId === "idea-to-roadmap") {
     return runIdeaToExecutionPlaybook(promptValue);
   }
