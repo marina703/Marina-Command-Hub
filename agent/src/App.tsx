@@ -27,6 +27,7 @@ import {
   ApprovalInbox,
   SecurityPanel,
   IntegrationsPanel,
+  OperationsShelf,
 } from "@/components/dashboard";
 import type { ViewId } from "@/components/dashboard/Sidebar";
 import type { ChatMessage } from "@/components/dashboard/AssistantConsole";
@@ -326,6 +327,15 @@ export default function App() {
               <div id="hub-workspace-panels" className="mb-4 scroll-mt-24">
                 <ErrorBoundary label="Workspace panels">
                   <WorkspacePanels onRefresh={refresh} />
+                </ErrorBoundary>
+              </div>
+
+              <div className="mb-4">
+                <ErrorBoundary label="Operations shelf">
+                  <OperationsShelf
+                    workspaceId={auth.session ? "default" : null}
+                    onRefresh={refresh}
+                  />
                 </ErrorBoundary>
               </div>
 

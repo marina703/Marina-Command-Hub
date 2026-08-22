@@ -95,12 +95,11 @@ test("state machine: run cancel is allowed from queued and active", () => {
   assert.ok(!sm.canTransition("run", "succeeded", "cancelled"));
 });
 
-test("state machine: run retry is only allowed from failed/timed_out", () => {
-  for (const s of ["failed", "timed_out"]) {
+test("state machine: run retry is only allowed from failed/timed_out/cancelled", () => {
+  for (const s of ["failed", "timed_out", "cancelled"]) {
     assert.ok(sm.canTransition("run", s, "queued"), `${s} → queued should be allowed for retry`);
   }
   assert.ok(!sm.canTransition("run", "succeeded", "queued"));
-  assert.ok(!sm.canTransition("run", "cancelled", "queued"));
 });
 
 test("artifact repository functions preserve a public = false contract (no public URL surface)", () => {

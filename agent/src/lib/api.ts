@@ -286,6 +286,39 @@ export interface ToolDefinition {
 export const listTools = () =>
   request<{ ok: boolean; tools: ToolDefinition[] }>("/api/tools");
 
+export interface OperationsShelfState {
+  ok: boolean;
+  workspaceId: string;
+  totalRuns: number;
+  counts: {
+    queued: number;
+    active: number;
+    succeeded: number;
+    failed: number;
+    cancelled: number;
+    timed_out: number;
+  };
+  localWorkerEnabled: boolean;
+  persistentWorkerEnabled: boolean;
+  recent: Array<{
+    id: string;
+    status: string;
+    attempt: number;
+    maxAttempts: number;
+    tool: string | null;
+    toolVersion: string | null;
+    worker: string | null;
+    leaseExpired: boolean;
+    failureClassification: string | null;
+  }>;
+  truthStatement: string;
+}
+
+export const getOperationsShelf = (workspaceId: string) =>
+  request<OperationsShelfState>(
+    `/api/durable/queue/state?workspaceId=${encodeURIComponent(workspaceId)}`,
+  );
+
 /* ──────────────────────────────────────────────
    Plans (versioned task plans)
    ────────────────────────────────────────────── */

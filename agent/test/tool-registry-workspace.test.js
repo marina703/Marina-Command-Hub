@@ -1,4 +1,23 @@
-/* Tool registry and workspace authorization tests — node:test. */
+/* Tool registry and workspace authorization tests — node:test.
+
+   The registry is now the only gateway for tool/handler
+   dispatch. The tests assert the truthful public surface:
+     - one executable handler (safe-internal) plus honest
+       planned / not_configured / blocked descriptors
+     - unknown tools fail closed as policy_blocked
+     - input validation rejects missing, wrong-typed, and
+       over-long fields
+     - approval_policy semantics
+     - feature-flag gating semantics
+     - workspace authorization semantics
+
+   The legacy readFile/writeFile/runCommand/deploy tools
+   were intentionally removed from the active registry in
+   this milestone. Their behavior is preserved only as
+   honest "blocked" descriptors in the registry, with
+   `available: false` and `executable: false`. These tests
+   assert the truthful new surface.
+*/
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
@@ -7,7 +26,10 @@ const {
   getToolDefinition,
   listTools,
   isToolAvailable,
+  isDispatchable,
   requiresApproval,
+  listDispatchableTools,
+  AVAILABILITY,
 } = require("../server-tool-registry");
 
 const {
@@ -19,23 +41,47 @@ const {
   AuthorizationError,
 } = require("../server-workspace");
 
-/* ── Tool Registry ── */
+/* ── Tool Registry (truthful new surface) ── */
 
-test("listTools returns all registered tools", () => {
+test("listTools returns the truthful registry", () => {
   const tools = listTools();
-  assert.ok(tools.length >= 7);
+  assert.ok(tools.length >= 5);
   const names = tools.map((t) => t.name);
-  assert.ok(names.includes("readFile"));
-  assert.ok(names.includes("writeFile"));
-  assert.ok(names.includes("runCommand"));
-  assert.ok(names.includes("deploy"));
+  assert.ok(names.includes("safe-internal"));
+  assert.ok(names.includes("market-research"));
+  assert.ok(names.includes("campaign-brief"));
+  assert.ok(names.includes("proposal-drafting"));
+  assert.ok(names.includes("client-delivery"));
+  assert.ok(names.includes("business-connection"));
+  assert.ok(names.includes("shell-exec"));
+  assert.ok(names.includes("browser-automation"));
+  assert.ok(names.includes("web-retrieval"));
+  assert.ok(names.includes("messaging-send"));
+  assert.ok(names.includes("payment-execute"));
+  assert.ok(names.includes("deployment-execute"));
+});
+
+test("only safe-internal is dispatchable; everything else is honest", () => {
+  const dispatchable = listDispatchableTools();
+  assert.equal(dispatchable.length, 1);
+  assert.equal(dispatchable[0].name, "safe-internal");
+  for (const t of listTools()) {
+    if (t.name === "safe-internal") {
+      assert.equal(t.executable, true);
+    } else {
+      // Either planned / not_configured / blocked — never executable.
+      assert.notEqual(t.executable, true, t.name + " must not be executable");
+    }
+  }
 });
 
 test("getToolDefinition returns definition for known action", () => {
-  const def = getToolDefinition("runCommand");
+  const def = getToolDefinition("safe-internal");
   assert.ok(def);
-  assert.equal(def.riskTier, "high");
-  assert.equal(def.approvalPolicy, "just_in_time");
+  assert.equal(def.riskTier, "low");
+  assert.equal(def.approvalPolicy, "plan_approval");
+  assert.equal(def.availabilityState, AVAILABILITY.AVAILABLE);
+  assert.equal(def.executable, true);
 });
 
 test("getToolDefinition returns null for unknown action", () => {
@@ -43,76 +89,86 @@ test("getToolDefinition returns null for unknown action", () => {
   assert.equal(getToolDefinition(null), null);
 });
 
-test("validateToolInput accepts valid input", () => {
-  const def = getToolDefinition("writeFile");
-  const result = validateToolInput(def, { path: "test.txt", content: "hello" });
+test("validateToolInput accepts a valid safe-internal payload", () => {
+  const def = getToolDefinition("safe-internal");
+  const result = validateToolInput(def, {
+    workspaceId: "w-1", taskId: "t-1", planId: "p-1",
+  });
   assert.equal(result.ok, true);
 });
 
 test("validateToolInput rejects missing required fields", () => {
-  const def = getToolDefinition("writeFile");
-  const result = validateToolInput(def, { content: "hello" });
+  const def = getToolDefinition("safe-internal");
+  const result = validateToolInput(def, { workspaceId: "w-1" });
   assert.equal(result.ok, false);
-  assert.match(result.error, /Missing required field: path/);
+  assert.match(result.error, /Missing required field: taskId|planId/);
 });
 
 test("validateToolInput rejects strings exceeding maxLength", () => {
-  const def = getToolDefinition("writeFile");
-  const longPath = "x".repeat(600);
-  const result = validateToolInput(def, { path: longPath, content: "x" });
+  const def = getToolDefinition("safe-internal");
+  const tooLong = "x".repeat(500);
+  const result = validateToolInput(def, {
+    workspaceId: tooLong, taskId: "t-1", planId: "p-1",
+  });
   assert.equal(result.ok, false);
   assert.match(result.error, /exceeds max length/);
 });
 
 test("validateToolInput rejects wrong types", () => {
-  const def = getToolDefinition("writeFile");
-  const result = validateToolInput(def, { path: 123, content: "x" });
-  assert.equal(result.ok, false);
-  assert.match(result.error, /path must be a string/);
-});
-
-test("validateToolInput rejects invalid enum values", () => {
-  const def = getToolDefinition("installDependencies");
+  const def = getToolDefinition("safe-internal");
   const result = validateToolInput(def, {
-    packages: ["test"],
-    packageManager: "invalid-pm",
+    workspaceId: 123, taskId: "t-1", planId: "p-1",
   });
   assert.equal(result.ok, false);
-  assert.match(result.error, /packageManager must be one of/);
+  assert.match(result.error, /workspaceId must be a string/);
 });
 
-test("requiresApproval returns true for high-risk tools", () => {
-  assert.equal(requiresApproval(getToolDefinition("runCommand")), true);
-  assert.equal(requiresApproval(getToolDefinition("deploy")), true);
+test("validateToolInput rejects unknown fields when additionalProperties=false", () => {
+  const def = getToolDefinition("safe-internal");
+  const result = validateToolInput(def, {
+    workspaceId: "w-1", taskId: "t-1", planId: "p-1", mystery: true,
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /Unexpected field: mystery/);
 });
 
-test("requiresApproval returns false for low-risk tools", () => {
-  assert.equal(requiresApproval(getToolDefinition("readFile")), false);
-  assert.equal(requiresApproval(getToolDefinition("generateReport")), false);
+test("requiresApproval returns true for high-risk tools and false for low-risk tools", () => {
+  assert.equal(requiresApproval(getToolDefinition("safe-internal")), false);
+  assert.equal(requiresApproval(getToolDefinition("business-connection")), true);
+  assert.equal(requiresApproval(getToolDefinition("messaging-send")), true);
+  assert.equal(requiresApproval(getToolDefinition("deployment-execute")), true);
 });
 
 test("requiresApproval returns true for unknown tools (fail-closed)", () => {
   assert.equal(requiresApproval(null), true);
 });
 
-test("isToolAvailable returns false for feature-gated tools without env", () => {
-  // runCommand requires MARINA_ENABLE_EXEC
-  const def = getToolDefinition("runCommand");
-  // Without the env var set, it should be unavailable
-  const saved = process.env.MARINA_ENABLE_EXEC;
-  delete process.env.MARINA_ENABLE_EXEC;
-  assert.equal(isToolAvailable(def), false);
-  // With the env var set, it should be available
-  process.env.MARINA_ENABLE_EXEC = "1";
-  assert.equal(isToolAvailable(def), true);
-  // Restore
-  if (saved) process.env.MARINA_ENABLE_EXEC = saved;
-  else delete process.env.MARINA_ENABLE_EXEC;
+test("isToolAvailable returns true only for available tools", () => {
+  assert.equal(isToolAvailable(getToolDefinition("safe-internal")), true);
+  assert.equal(isToolAvailable(getToolDefinition("market-research")), false);
+  assert.equal(isToolAvailable(getToolDefinition("payment-execute")), false);
 });
 
-test("isToolAvailable returns true for non-gated tools", () => {
-  assert.equal(isToolAvailable(getToolDefinition("readFile")), true);
-  assert.equal(isToolAvailable(getToolDefinition("writeFile")), true);
+test("blocked tools are never dispatchable, even with a future feature flag", () => {
+  const def = getToolDefinition("shell-exec");
+  assert.equal(isDispatchable(def), false);
+  assert.equal(def.availabilityState, AVAILABILITY.BLOCKED);
+});
+
+test("isDispatchable requires executable=true AND available=true", () => {
+  const safe = getToolDefinition("safe-internal");
+  assert.equal(isDispatchable(safe), true);
+  const planned = getToolDefinition("market-research");
+  assert.equal(isDispatchable(planned), false);
+});
+
+test("registry never includes external send / payment / deploy as executable", () => {
+  for (const t of listTools()) {
+    if (["messaging-send", "payment-execute", "deployment-execute", "shell-exec", "browser-automation", "web-retrieval"].includes(t.name)) {
+      assert.equal(t.executable, false, t.name + " must not be executable");
+      assert.equal(t.availabilityState, AVAILABILITY.BLOCKED);
+    }
+  }
 });
 
 /* ── Workspace Authorization ── */
@@ -145,7 +201,7 @@ test("scopeToWorkspace filters records by workspace", () => {
   const records = [
     { id: "1", workspaceId: "default" },
     { id: "2", workspaceId: "ws-other" },
-    { id: "3" }, // no workspaceId → included (backward compat)
+    { id: "3" },
     { id: "4", workspaceId: "default" },
   ];
   const scoped = scopeToWorkspace(records, "default");
@@ -160,7 +216,6 @@ test("stampWorkspace adds workspaceId to record", () => {
   const stamped = stampWorkspace(record, "ws-123");
   assert.equal(stamped.workspaceId, "ws-123");
   assert.equal(stamped.id, "task-1");
-  // Original not mutated
   assert.equal(record.workspaceId, undefined);
 });
 

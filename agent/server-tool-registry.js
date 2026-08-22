@@ -1,65 +1,122 @@
 /* ============================================================
-   Marina AI Command Hub — Tool Registry
+   Marina AI Command Hub — Tool Registry & Dispatch Boundary
 
-   Allowlisted tool definitions with input/output JSON schema
-   validation, risk tier, approval policy, timeout, concurrency
-   limit, retry configuration, and redaction fields.
+   The only gateway for tool/handler dispatch. The agent
+   routes, the React components, and the queue worker all
+   route through `getToolDefinition()` and `listTools()`.
+   Unknown actions are rejected as "not_configured" or
+   "policy_blocked" (fail-closed).
 
-   Only tools registered here can be dispatched. Unknown actions
-   are rejected as "critical" by the policy engine (fail-closed).
+   In this milestone exactly ONE handler is wired for
+   execution:
+
+     - safe-internal: the bounded, providerless plan-brief
+       workflow. It is the only entry that returns ok=true
+       from `dispatch()`.
+
+   All other "business-oriented" tools are honest descriptors
+   in one of three truthful states:
+
+     - available (ready to dispatch right now)
+     - not_configured (no provider/integration; safe to display)
+     - planned (intentional roadmap item; not implemented)
+     - blocked (intentionally disabled; never returns a side effect)
+
+   No shell, no browser, no web retrieval, no message/email
+   sending, no payment, no deployment, no third-party upload,
+   no external CRM/CMS modification, and no credential
+   operation is registered as executable.
    ============================================================ */
 
-/** A tool's input validation result. */
+const AVAILABILITY = {
+  AVAILABLE: "available",
+  NOT_CONFIGURED: "not_configured",
+  PLANNED: "planned",
+  BLOCKED: "blocked",
+  DISABLED: "disabled",
+};
+
+/** Risk classification per known executor action. */
+const ACTION_RISK = {
+  readfile: "low",
+  scanproject: "low",
+  generatereport: "low",
+  writefile: "moderate",
+  modifyfile: "moderate",
+  createfile: "moderate",
+  runcommand: "high",
+  installdependencies: "high",
+  deploy: "critical",
+};
+
+/** Blocked categories. Listed individually so the UI and the
+ *  worker can show truthful "blocked" state. */
+const BLOCKED_CATEGORIES = new Set([
+  "shell",
+  "browserAutomation",
+  "webRetrieval",
+  "messaging",
+  "publishing",
+  "payment",
+  "deployment",
+  "thirdPartyUpload",
+  "externalCrm",
+  "externalCms",
+  "credentials",
+  "modelInference",
+]);
+
+/** Validate a tool's input payload against its declared schema. */
 function validateToolInput(toolDef, input) {
   if (!toolDef) return { ok: false, error: "Unknown tool." };
   if (!toolDef.inputSchema) return { ok: true };
-
   const schema = toolDef.inputSchema;
   const errors = [];
-
   if (schema.required) {
     for (const field of schema.required) {
       if (input[field] === undefined || input[field] === null) {
-        errors.push(`Missing required field: ${field}`);
+        errors.push("Missing required field: " + field);
       }
     }
   }
-
   if (schema.properties) {
     for (const [key, spec] of Object.entries(schema.properties)) {
       const val = input[key];
       if (val === undefined || val === null) continue;
-
       if (spec.type === "string" && typeof val !== "string") {
-        errors.push(`${key} must be a string`);
+        errors.push(key + " must be a string");
       } else if (spec.type === "number" && typeof val !== "number") {
-        errors.push(`${key} must be a number`);
+        errors.push(key + " must be a number");
       } else if (spec.type === "boolean" && typeof val !== "boolean") {
-        errors.push(`${key} must be a boolean`);
+        errors.push(key + " must be a boolean");
       } else if (spec.type === "array" && !Array.isArray(val)) {
-        errors.push(`${key} must be an array`);
+        errors.push(key + " must be an array");
       } else if (spec.type === "object" && (typeof val !== "object" || Array.isArray(val))) {
-        errors.push(`${key} must be an object`);
+        errors.push(key + " must be an object");
       }
-
       if (spec.type === "string" && typeof val === "string" && spec.maxLength) {
         if (val.length > spec.maxLength) {
-          errors.push(`${key} exceeds max length ${spec.maxLength}`);
+          errors.push(key + " exceeds max length " + spec.maxLength);
         }
       }
-
       if (spec.enum && !spec.enum.includes(val)) {
-        errors.push(`${key} must be one of: ${spec.enum.join(", ")}`);
+        errors.push(key + " must be one of: " + spec.enum.join(", "));
       }
     }
   }
-
+  if (schema.additionalProperties === false && input) {
+    for (const k of Object.keys(input)) {
+      if (!schema.properties || !schema.properties[k]) {
+        errors.push("Unexpected field: " + k);
+      }
+    }
+  }
   return errors.length > 0 ? { ok: false, error: errors.join("; ") } : { ok: true };
 }
 
 /** Fields that must be redacted from a tool's output before persistence. */
 function getRedactionFields(toolDef) {
-  return toolDef?.redactionFields || [];
+  return (toolDef && toolDef.redactionFields) || [];
 }
 
 /** Whether a tool requires just-in-time approval at execution time. */
@@ -72,158 +129,212 @@ function requiresApproval(toolDef) {
 function isToolAvailable(toolDef) {
   if (!toolDef) return false;
   if (toolDef.featureFlag && !process.env[toolDef.featureFlag]) return false;
-  return toolDef.availabilityState === "active";
+  return toolDef.availabilityState === AVAILABILITY.AVAILABLE;
 }
 
-/** The built-in tool registry. */
+/** Whether a tool is in a "ready-to-dispatch" state at all. */
+function isDispatchable(toolDef) {
+  if (!toolDef) return false;
+  return toolDef.executable === true && isToolAvailable(toolDef);
+}
+
+/** Map a tool descriptor to the public UI shape used by IntegrationsPanel. */
+function toPublicShape(toolDef) {
+  return {
+    name: toolDef.name,
+    version: toolDef.version,
+    purpose: toolDef.purpose,
+    riskTier: toolDef.riskTier,
+    approvalPolicy: toolDef.approvalPolicy,
+    availability: toolDef.availability,
+    availabilityState: toolDef.availabilityState,
+    featureFlag: toolDef.featureFlag || null,
+    executable: toolDef.executable === true,
+    dispatchable: isDispatchable(toolDef),
+    timeoutMs: toolDef.timeout || null,
+    concurrencyLimit: toolDef.concurrencyLimit || null,
+    retryClassifications: toolDef.retryClassifications || null,
+  };
+}
+
+/** The single registered tool registry. */
 const TOOL_REGISTRY = {
-  readFile: {
-    name: "readFile",
+  // ── The only enabled executable handler in this milestone ──
+  "safe-internal": {
+    name: "safe-internal",
     version: "1.0.0",
-    purpose: "Read a file from the workspace",
+    handlerId: "safe-internal",
+    purpose: "Generate a private Markdown plan brief from an approved plan. Providerless, deterministic, side-effect-free inside MarinaAI.",
     riskTier: "low",
     approvalPolicy: "plan_approval",
-    timeout: 5000,
-    concurrencyLimit: 5,
-    retryConfig: { maxRetries: 0 },
-    availabilityState: "active",
-    inputSchema: {
-      required: ["path"],
-      properties: { path: { type: "string", maxLength: 500 } },
-    },
-    redactionFields: [],
-  },
-  scanProject: {
-    name: "scanProject",
-    version: "1.0.0",
-    purpose: "Scan the project context for files and structure",
-    riskTier: "low",
-    approvalPolicy: "plan_approval",
-    timeout: 10000,
+    availability: AVAILABILITY.AVAILABLE,
+    availabilityState: AVAILABILITY.AVAILABLE,
+    executable: true,
+    timeout: 8000,
     concurrencyLimit: 1,
-    retryConfig: { maxRetries: 1 },
-    availabilityState: "active",
-    inputSchema: {},
+    retryConfig: { maxRetries: 1, retryClassifications: ["internal_error", "timeout"] },
     redactionFields: [],
-  },
-  generateReport: {
-    name: "generateReport",
-    version: "1.0.0",
-    purpose: "Generate a structured Markdown report/artifact",
-    riskTier: "low",
-    approvalPolicy: "plan_approval",
-    timeout: 30000,
-    concurrencyLimit: 3,
-    retryConfig: { maxRetries: 1 },
-    availabilityState: "active",
     inputSchema: {
-      required: ["title"],
+      type: "object",
+      required: ["workspaceId", "taskId", "planId"],
+      additionalProperties: false,
       properties: {
-        title: { type: "string", maxLength: 200 },
-        content: { type: "string", maxLength: 50000 },
-        format: { type: "string", enum: ["markdown", "text"] },
+        workspaceId: { type: "string", maxLength: 100 },
+        taskId: { type: "string", maxLength: 100 },
+        planId: { type: "string", maxLength: 100 },
+        idempotencyKey: { type: "string", maxLength: 200 },
       },
     },
-    redactionFields: [],
   },
-  writeFile: {
-    name: "writeFile",
-    version: "1.0.0",
-    purpose: "Write a file to the workspace",
+  // ── Honest "planned" descriptors — never executable ──
+  "market-research": {
+    name: "market-research",
+    version: "0.0.0",
+    handlerId: null,
+    purpose: "Planned: source-controlled research. Requires an approved research provider path and a policy-approved data license.",
     riskTier: "moderate",
     approvalPolicy: "plan_approval",
-    timeout: 5000,
-    concurrencyLimit: 2,
-    retryConfig: { maxRetries: 0 },
-    availabilityState: "active",
-    inputSchema: {
-      required: ["path", "content"],
-      properties: {
-        path: { type: "string", maxLength: 500 },
-        content: { type: "string", maxLength: 100000 },
-      },
-    },
+    availability: AVAILABILITY.PLANNED,
+    availabilityState: AVAILABILITY.PLANNED,
+    executable: false,
     redactionFields: [],
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
-  modifyFile: {
-    name: "modifyFile",
-    version: "1.0.0",
-    purpose: "Modify an existing file in the workspace",
+  "campaign-brief": {
+    name: "campaign-brief",
+    version: "0.0.0",
+    handlerId: null,
+    purpose: "Not configured. Approved provider/tool path required before any campaign brief automation is enabled.",
     riskTier: "moderate",
     approvalPolicy: "plan_approval",
-    timeout: 5000,
-    concurrencyLimit: 2,
-    retryConfig: { maxRetries: 0 },
-    availabilityState: "active",
-    inputSchema: {
-      required: ["path"],
-      properties: {
-        path: { type: "string", maxLength: 500 },
-        changes: { type: "string", maxLength: 100000 },
-      },
-    },
+    availability: AVAILABILITY.NOT_CONFIGURED,
+    availabilityState: AVAILABILITY.NOT_CONFIGURED,
+    executable: false,
     redactionFields: [],
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
-  runCommand: {
-    name: "runCommand",
-    version: "1.0.0",
-    purpose: "Execute a shell command in the workspace",
+  "proposal-drafting": {
+    name: "proposal-drafting",
+    version: "0.0.0",
+    handlerId: null,
+    purpose: "Planned. If a safe internal template is later added it will be registered through this boundary; today only safe-internal is wired.",
+    riskTier: "moderate",
+    approvalPolicy: "plan_approval",
+    availability: AVAILABILITY.PLANNED,
+    availabilityState: AVAILABILITY.PLANNED,
+    executable: false,
+    redactionFields: [],
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  "client-delivery": {
+    name: "client-delivery",
+    version: "0.0.0",
+    handlerId: null,
+    purpose: "Private artifact handling only. External sending/export is not enabled in this milestone.",
     riskTier: "high",
     approvalPolicy: "just_in_time",
-    timeout: 30000,
-    concurrencyLimit: 1,
-    retryConfig: { maxRetries: 0 },
-    availabilityState: "active",
-    featureFlag: "MARINA_ENABLE_EXEC",
-    inputSchema: {
-      required: ["command"],
-      properties: { command: { type: "string", maxLength: 1000 } },
-    },
-    redactionFields: ["token", "apiKey", "password"],
-  },
-  installDependencies: {
-    name: "installDependencies",
-    version: "1.0.0",
-    purpose: "Install dependencies in the workspace",
-    riskTier: "high",
-    approvalPolicy: "just_in_time",
-    timeout: 120000,
-    concurrencyLimit: 1,
-    retryConfig: { maxRetries: 0 },
-    availabilityState: "active",
-    featureFlag: "MARINA_ENABLE_EXEC",
-    inputSchema: {
-      required: ["packages"],
-      properties: {
-        packages: { type: "array" },
-        packageManager: { type: "string", enum: ["npm", "yarn", "pnpm"] },
-      },
-    },
+    availability: AVAILABILITY.BLOCKED,
+    availabilityState: AVAILABILITY.BLOCKED,
+    executable: false,
     redactionFields: [],
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
-  deploy: {
-    name: "deploy",
-    version: "1.0.0",
-    purpose: "Deploy to a target environment",
+  "business-connection": {
+    name: "business-connection",
+    version: "0.0.0",
+    handlerId: null,
+    purpose: "No integration configured. Adding a CRM/email/calendar integration requires an explicit per-workspace approval and a separate audit pass.",
     riskTier: "critical",
     approvalPolicy: "just_in_time",
-    timeout: 300000,
-    concurrencyLimit: 1,
-    retryConfig: { maxRetries: 0 },
-    availabilityState: "active",
-    featureFlag: "MARINA_ENABLE_EXEC",
-    inputSchema: {
-      required: ["target"],
-      properties: { target: { type: "string", maxLength: 200 } },
-    },
-    redactionFields: ["token", "apiKey", "password", "secret"],
+    availability: AVAILABILITY.NOT_CONFIGURED,
+    availabilityState: AVAILABILITY.NOT_CONFIGURED,
+    executable: false,
+    redactionFields: [],
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  // ── Honest "blocked" descriptors — never executable ──
+  "shell-exec": {
+    name: "shell-exec",
+    version: "0.0.0",
+    handlerId: null,
+    purpose: "Blocked. Shell execution is intentionally disabled.",
+    riskTier: "critical",
+    approvalPolicy: "just_in_time",
+    availability: AVAILABILITY.BLOCKED,
+    availabilityState: AVAILABILITY.BLOCKED,
+    executable: false,
+    redactionFields: [],
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  "browser-automation": {
+    name: "browser-automation",
+    version: "0.0.0",
+    handlerId: null,
+    purpose: "Blocked. Browser automation is intentionally disabled.",
+    riskTier: "critical",
+    approvalPolicy: "just_in_time",
+    availability: AVAILABILITY.BLOCKED,
+    availabilityState: AVAILABILITY.BLOCKED,
+    executable: false,
+    redactionFields: [],
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  "web-retrieval": {
+    name: "web-retrieval",
+    version: "0.0.0",
+    handlerId: null,
+    purpose: "Blocked. Web retrieval is intentionally disabled in this milestone.",
+    riskTier: "high",
+    approvalPolicy: "just_in_time",
+    availability: AVAILABILITY.BLOCKED,
+    availabilityState: AVAILABILITY.BLOCKED,
+    executable: false,
+    redactionFields: [],
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  "messaging-send": {
+    name: "messaging-send",
+    version: "0.0.0",
+    handlerId: null,
+    purpose: "Blocked. Message/email sending is intentionally disabled.",
+    riskTier: "critical",
+    approvalPolicy: "just_in_time",
+    availability: AVAILABILITY.BLOCKED,
+    availabilityState: AVAILABILITY.BLOCKED,
+    executable: false,
+    redactionFields: [],
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  "payment-execute": {
+    name: "payment-execute",
+    version: "0.0.0",
+    handlerId: null,
+    purpose: "Blocked. Payment execution is intentionally disabled.",
+    riskTier: "critical",
+    approvalPolicy: "just_in_time",
+    availability: AVAILABILITY.BLOCKED,
+    availabilityState: AVAILABILITY.BLOCKED,
+    executable: false,
+    redactionFields: [],
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  "deployment-execute": {
+    name: "deployment-execute",
+    version: "0.0.0",
+    handlerId: null,
+    purpose: "Blocked. Deployment execution is intentionally disabled.",
+    riskTier: "critical",
+    approvalPolicy: "just_in_time",
+    availability: AVAILABILITY.BLOCKED,
+    availabilityState: AVAILABILITY.BLOCKED,
+    executable: false,
+    redactionFields: [],
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
 };
 
-/** Look up a tool definition by action name. */
 function getToolDefinition(action) {
   if (!action) return null;
-  // Try exact match first, then case-insensitive match.
   if (TOOL_REGISTRY[action]) return TOOL_REGISTRY[action];
   const lower = action.toLowerCase();
   for (const [key, val] of Object.entries(TOOL_REGISTRY)) {
@@ -232,26 +343,31 @@ function getToolDefinition(action) {
   return null;
 }
 
-/** List all registered tools (for the Integrations/Tools UI). */
 function listTools() {
-  return Object.values(TOOL_REGISTRY).map((t) => ({
-    name: t.name,
-    version: t.version,
-    purpose: t.purpose,
-    riskTier: t.riskTier,
-    approvalPolicy: t.approvalPolicy,
-    available: isToolAvailable(t),
-    availabilityState: t.availabilityState,
-    featureFlag: t.featureFlag || null,
-  }));
+  return Object.values(TOOL_REGISTRY).map(toPublicShape);
+}
+
+function listDispatchableTools() {
+  return Object.values(TOOL_REGISTRY).filter(isDispatchable).map(toPublicShape);
+}
+
+function listExecutables() {
+  return Object.values(TOOL_REGISTRY).filter((t) => t.executable === true).map(toPublicShape);
 }
 
 module.exports = {
+  AVAILABILITY,
+  ACTION_RISK,
+  BLOCKED_CATEGORIES,
   TOOL_REGISTRY,
   validateToolInput,
   getRedactionFields,
   requiresApproval,
   isToolAvailable,
+  isDispatchable,
+  toPublicShape,
   getToolDefinition,
   listTools,
+  listDispatchableTools,
+  listExecutables,
 };

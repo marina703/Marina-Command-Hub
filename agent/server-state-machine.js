@@ -77,7 +77,7 @@ const TRANSITIONS = {
     active: ["succeeded", "failed", "cancelled", "timed_out"],
     succeeded: [],
     failed: ["queued"], // retry → linked new attempt
-    cancelled: [],
+    cancelled: ["queued"], // cancelled runs may be re-queued as retries
     timed_out: ["queued"], // retry → linked new attempt
   },
   approval: {

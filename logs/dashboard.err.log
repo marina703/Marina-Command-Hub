@@ -6,7 +6,7 @@ Error: listen EADDRINUSE: address already in use :::3000
     at Server.setupListenHandle [as _listen2] (node:net:2167:16)
     at listenInCluster (node:net:2224:12)
     at Server.listen (node:net:2344:7)
-    at Object.<anonymous> (C:\Users\linde\Projects\MarinaAI\agent\dashboard-server.js:795:10)
+    at Object.<anonymous> (C:\Users\linde\Projects\MarinaAI\agent\dashboard-server.js:1380:10)
     at Module._compile (node:internal/modules/cjs/loader:1872:14)
     at Object..js (node:internal/modules/cjs/loader:2003:10)
     at Module.load (node:internal/modules/cjs/loader:1594:32)

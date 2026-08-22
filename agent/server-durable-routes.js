@@ -707,6 +707,56 @@ async function listWorkflows(_req, res) {
   return json(res, 200, { ok: true, workflows: workflow.listWorkflows() });
 }
 
+async function queueState(req, res, url) {
+  if (configGuard(res)) return;
+  const workspaceId = url.searchParams.get("workspaceId");
+  const auth = await requireWorkspace(req, workspaceId);
+  if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+  // Truthful state: count runs by status for the workspace.
+  // We use the public run list and group by status in memory.
+  // This endpoint is for the Operations Shelf; it never lies
+  // about a worker it does not have.
+  let counts = { queued: 0, active: 0, succeeded: 0, failed: 0, cancelled: 0, timed_out: 0 };
+  let totalRuns = 0;
+  // We rely on the existing supabase repo. List up to 200 recent runs.
+  const { data, error } = await supabaseRepo.getServiceClient()
+    .from("runs")
+    .select("id, status, attempt_count, max_attempts, lease_expires_at, heartbeat_at, available_at, worker_id, tool_name, tool_version, failure_classification")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) {
+    return json(res, 500, { ok: false, message: error.message });
+  }
+  totalRuns = (data || []).length;
+  const now = Date.now();
+  for (const r of data || []) {
+    if (counts[r.status] != null) counts[r.status] += 1;
+  }
+  // Most-recent activity view (oldest first for stable display)
+  const recent = (data || []).slice(0, 10).reverse().map((r) => ({
+    id: r.id,
+    status: r.status,
+    attempt: r.attempt_count,
+    maxAttempts: r.max_attempts,
+    tool: r.tool_name,
+    toolVersion: r.tool_version,
+    worker: r.worker_id,
+    leaseExpired: r.lease_expires_at ? new Date(r.lease_expires_at).getTime() < now : false,
+    failureClassification: r.failure_classification,
+  }));
+  return json(res, 200, {
+    ok: true,
+    workspaceId,
+    totalRuns,
+    counts,
+    localWorkerEnabled: Boolean(process.env.MARINA_LOCAL_WORKER),
+    persistentWorkerEnabled: false,
+    recent,
+    truthStatement: "This is the current durable queue state. The persistent worker runtime is not enabled in this milestone; use MARINA_LOCAL_WORKER=1 to opt in to the local/manual harness for development and tests.",
+  });
+}
+
 async function handleDurable(req, res, url) {
   const method = req.method;
   const path = url.pathname;
@@ -758,6 +808,35 @@ async function handleDurable(req, res, url) {
 
   // Workflows
   if (path === "/api/durable/workflows" && method === "GET") return listWorkflows(req, res);
+
+  // Queue (durable worker foundation)
+  if (path === "/api/durable/queue/enqueue" && method === "POST") {
+    const queueRoutes = require("./server-queue-routes");
+    return queueRoutes.enqueue(req, res);
+  }
+  if (path === "/api/durable/queue/cancel" && method === "POST") {
+    const queueRoutes = require("./server-queue-routes");
+    return queueRoutes.cancelRun(req, res);
+  }
+  if (path === "/api/durable/queue/retry" && method === "POST") {
+    const queueRoutes = require("./server-queue-routes");
+    return queueRoutes.retryRun(req, res);
+  }
+  if (path === "/api/durable/queue/lease-recovery" && method === "GET") {
+    const queueRoutes = require("./server-queue-routes");
+    return queueRoutes.recoverExpired(req, res, url);
+  }
+  if (path === "/api/durable/queue/local-worker/once" && method === "POST") {
+    const queueRoutes = require("./server-queue-routes");
+    return queueRoutes.localWorkerOnce(req, res);
+  }
+  if (path === "/api/durable/queue/local-worker/run" && method === "POST") {
+    const queueRoutes = require("./server-queue-routes");
+    return queueRoutes.localWorkerRun(req, res);
+  }
+  if (path === "/api/durable/queue/state" && method === "GET") {
+    return queueState(req, res, url);
+  }
 
   return json(res, 404, { ok: false, message: "Durable route not found", path });
 }
