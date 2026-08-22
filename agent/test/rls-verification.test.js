@@ -174,6 +174,145 @@ test("migration includes create_workspace_with_owner bootstrap function", () => 
   );
 });
 
+/* ── Security hardening migration tests ── */
+
+test("security hardening: private schema exists and is secured", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const sql = fs.readFileSync(
+    path.join(__dirname, "..", "..", "supabase", "migrations", "20260822000001_security_hardening.sql"),
+    "utf8",
+  );
+  assert.ok(sql.includes("create schema if not exists private"), "must create private schema");
+  assert.ok(
+    sql.includes("revoke all on schema private from public, anon, authenticated"),
+    "must revoke schema usage from exposed roles",
+  );
+  assert.ok(
+    sql.includes("grant usage on schema private to postgres, service_role"),
+    "must grant usage only to internal roles",
+  );
+});
+
+test("security hardening: all SECURITY DEFINER functions use fixed search_path", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const sql = fs.readFileSync(
+    path.join(__dirname, "..", "..", "supabase", "migrations", "20260822000001_security_hardening.sql"),
+    "utf8",
+  );
+  const secDefinerMatches = sql.match(/security definer[\s\S]*?set search_path/gi) || [];
+  const createFnMatches = sql.match(/create or replace function private\./gi) || [];
+  assert.ok(secDefinerMatches.length >= createFnMatches.length,
+    "every private function must have SECURITY DEFINER with set search_path");
+  assert.ok(!sql.match(/set search_path\s*=\s*''/), "no empty search_path allowed");
+  assert.ok(sql.includes("set search_path = pg_catalog, public"), "must use pg_catalog, public");
+});
+
+test("security hardening: no SECURITY DEFINER helper callable by anon", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const sql = fs.readFileSync(
+    path.join(__dirname, "..", "..", "supabase", "migrations", "20260822000001_security_hardening.sql"),
+    "utf8",
+  );
+  assert.ok(
+    sql.includes("revoke execute on all functions in schema private from public, anon, authenticated"),
+    "must revoke EXECUTE on all private functions from exposed roles",
+  );
+  const grantMatches = sql.match(/grant execute on function private\.\w+/gi) || [];
+  assert.equal(grantMatches.length, 1, "only one private function should be granted to authenticated");
+  assert.ok(grantMatches[0].includes("has_workspace_role"), "only has_workspace_role granted to authenticated");
+});
+
+test("security hardening: workspace bootstrap is server-only", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const sql = fs.readFileSync(
+    path.join(__dirname, "..", "..", "supabase", "migrations", "20260822000001_security_hardening.sql"),
+    "utf8",
+  );
+  assert.ok(sql.includes("private.create_workspace_with_owner("), "must define private bootstrap");
+  assert.ok(sql.includes("public.create_workspace("), "must define public wrapper");
+  assert.ok(
+    sql.includes("revoke execute on function public.create_workspace(text, text, uuid) from public, anon, authenticated"),
+    "must revoke wrapper from exposed roles",
+  );
+  assert.ok(
+    sql.includes("grant execute on function public.create_workspace(text, text, uuid) to service_role"),
+    "must grant wrapper only to service_role",
+  );
+  assert.ok(
+    sql.includes("drop function if exists public.create_workspace_with_owner(text, text)"),
+    "must drop old public bootstrap",
+  );
+});
+
+test("security hardening: RLS policies reference private.has_workspace_role", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const sql = fs.readFileSync(
+    path.join(__dirname, "..", "..", "supabase", "migrations", "20260822000001_security_hardening.sql"),
+    "utf8",
+  );
+  const alterPolicies = sql.match(/alter policy[\s\S]*?;/gi) || [];
+  const policiesWithPrivate = alterPolicies.filter(p => p.includes("private.has_workspace_role"));
+  const policiesWithoutPrivate = alterPolicies.filter(
+    p => !p.includes("private.has_workspace_role") && !p.includes("auth.uid()"),
+  );
+  assert.equal(policiesWithoutPrivate.length, 0, "all policies must reference private or auth.uid()");
+  assert.ok(policiesWithPrivate.length >= 50, "must update 50+ policies to private reference");
+});
+
+test("security hardening: all policies restricted to authenticated role", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const sql = fs.readFileSync(
+    path.join(__dirname, "..", "..", "supabase", "migrations", "20260822000001_security_hardening.sql"),
+    "utf8",
+  );
+  const alterPolicies = sql.match(/alter policy[\s\S]*?;/gi) || [];
+  const policiesWithAuth = alterPolicies.filter(p => p.includes("to authenticated"));
+  assert.equal(policiesWithAuth.length, alterPolicies.length, "all policies must be restricted to authenticated");
+});
+
+test("security hardening: old public functions are dropped", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const sql = fs.readFileSync(
+    path.join(__dirname, "..", "..", "supabase", "migrations", "20260822000001_security_hardening.sql"),
+    "utf8",
+  );
+  assert.ok(sql.includes("drop function if exists public.has_workspace_role(uuid, text)"));
+  assert.ok(sql.includes("drop function if exists public.user_can_access_workspace()"));
+  assert.ok(sql.includes("drop function if exists public.handle_updated_at()"));
+  assert.ok(sql.includes("drop function if exists public.handle_new_user()"));
+  assert.ok(sql.includes("drop function if exists public.create_workspace_with_owner(text, text)"));
+});
+
+test("security hardening: artifacts bucket remains private", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const sql = fs.readFileSync(
+    path.join(__dirname, "..", "..", "supabase", "migrations", "20260822000001_security_hardening.sql"),
+    "utf8",
+  );
+  assert.ok(!sql.includes("public = true"), "no bucket should be made public");
+  assert.ok(sql.includes("artifacts_storage_member_read"), "storage read policy must exist");
+  assert.ok(sql.includes("artifacts_storage_admin_delete"), "storage delete policy must exist");
+});
+
+test("security hardening: createWorkspace server seam rejects missing userId", async () => {
+  const result = await supabaseRepo.createWorkspace({ name: "test", slug: "test" });
+  assert.equal(result.ok, false);
+  // When Supabase is not configured, returns "not configured" (early return).
+  // When configured, returns "Authenticated user ID required" (userId check).
+  assert.ok(
+    /not configured|user id required/i.test(result.message),
+    "must reject with appropriate message",
+  );
+});
+
 /* ── Migration tool tests ── */
 
 test("migration tool produces dry-run report", () => {

@@ -275,6 +275,32 @@ async function createAuditEventInDb(event) {
   return { ok: true, event: data };
 }
 
+/**
+ * Create a workspace with the first owner membership.
+ *
+ * SECURITY: This function calls the server-only public.create_workspace
+ * RPC which is restricted to service_role. The userId parameter MUST be
+ * derived from verified server auth context (JWT/session). Never accept
+ * a client-supplied user_id as trusted input.
+ *
+ * When real auth is not yet configured, this function returns
+ * { ok: false, message: "Authenticated user ID required" } as a
+ * truthful unavailable state.
+ */
+async function createWorkspace({ userId, name, slug }) {
+  if (!isConfigured) return { ok: false, message: "Supabase not configured" };
+  if (!userId) return { ok: false, message: "Authenticated user ID required" };
+  const client = getServiceClient();
+  if (!client) return { ok: false, message: "Service client unavailable" };
+  const { data, error } = await client.rpc("create_workspace", {
+    p_name: name,
+    p_slug: slug,
+    p_owner_id: userId,
+  });
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, workspaceId: data };
+}
+
 module.exports = {
   isConfigured,
   getSupabaseStatus,
@@ -290,4 +316,5 @@ module.exports = {
   uploadArtifactFile,
   getArtifactSignedUrl,
   createAuditEventInDb,
+  createWorkspace,
 };
