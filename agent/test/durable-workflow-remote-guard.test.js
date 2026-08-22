@@ -26,6 +26,8 @@ const { spawnSync } = require("node:child_process");
 
 const SCRIPT = path.join(__dirname, "durable-workflow-remote.test.js");
 const SRC = fs.readFileSync(SCRIPT, "utf8");
+const PROJECT_REF_FOR_GUARD = "sslgswhhlujryjlrnnfr";
+
 
 function runScript(env) {
   // Use --no-warnings to keep output clean and isolate to stdout.
@@ -153,3 +155,54 @@ test("source: required approval sentence is embedded verbatim", () => {
   assert.ok(SRC.includes(expected),
     "the corrected approval sentence must be embedded in the dry-run output");
 });
+
+test("source: corrected approval sentence matches task spec exactly", () => {
+  // The exact full approval sentence required by the task spec must be
+  // embedded in the dry-run output. The script builds the sentence from
+  // a const APPROVAL_SENTENCE = [...].join(" "), so we extract that
+  // array and verify the rendered string equals the task spec exactly.
+  // This is a strict equality check that prevents any drift in the
+  // approval contract (the only phrase that may authorize a real run).
+  const arrayMatch = SRC.match(/const APPROVAL_SENTENCE = (\[[\s\S]*?\]\.join\(" "\));/);
+  assert.ok(arrayMatch, "the script must define const APPROVAL_SENTENCE = [...].join(\" \");");
+  // Evaluate the array literal in a sandboxed Function to get the rendered string.
+  const rendered = new Function("PROJECT_REF", "return (" + arrayMatch[1] + ");")(PROJECT_REF_FOR_GUARD);
+  const REQUIRED_SENTENCE =
+    "I approve creating two labelled staging-only Auth test users, " +
+    "one owner workspace, one task, its test plan version(s) and approval, " +
+    "one safe-internal run with its persisted events/audit records, " +
+    "and one private artifact plus its exact storage object in project " +
+    PROJECT_REF_FOR_GUARD + " for durable-workflow verification. The test may verify " +
+    "owner, non-member, and anonymous authorization boundaries and will " +
+    "delete only its exact recorded test fixtures and storage object when " +
+    "MARINA_CLEANUP_STAGING_TESTS=1 is set.";
+  assert.equal(rendered, REQUIRED_SENTENCE,
+    "rendered APPROVAL_SENTENCE must match the task spec exactly");
+});
+
+
+
+test("source: project ref is the exact verified staging ref, not a placeholder", () => {
+  // The project ref must be exactly the verified staging ref. Fail closed
+  // if anyone changes it to a placeholder, an example, or any other value.
+  assert.match(SRC, /PROJECT_REF = "sslgswhhlujryjlrnnfr"/,
+    "must use the exact verified staging project ref");
+  assert.ok(!/PROJECT_REF = "your-project-ref"/.test(SRC),
+    "PROJECT_REF must never be a placeholder");
+  assert.ok(!/PROJECT_REF = "TODO/i.test(SRC),
+    "PROJECT_REF must never be a TODO placeholder");
+});
+
+test("source: no broad-delete patterns anywhere in cleanup", () => {
+  // Strong invariants to forbid broad-deletion patterns anywhere in the
+  // remote test script source.
+  assert.ok(!/ilike\(/i.test(SRC), "no ilike-based broad deletes");
+  assert.ok(!/like\(['"`]%/i.test(SRC), "no LIKE prefix-based broad deletes");
+  assert.ok(!/like\(['"`]%.*%/i.test(SRC), "no LIKE substring-based broad deletes");
+  assert.ok(!/storage[\s\S]{0,200}\.remove\(\[\s*\*\s*\]\)/.test(SRC),
+    "storage.remove must never use a wildcard array");
+  assert.ok(!/\.delete\(\)\.neq\(/i.test(SRC), "no delete().neq() broad deletes");
+  assert.ok(!/\.delete\(\)\.gte\(/i.test(SRC), "no delete().gte() range-based broad deletes");
+  assert.ok(!/\.delete\(\)\.lte\(/i.test(SRC), "no delete().lte() range-based broad deletes");
+});
+
