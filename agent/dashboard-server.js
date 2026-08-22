@@ -1,3 +1,6 @@
+// Load .env.local before any other imports so process.env is populated.
+try { require("dotenv").config({ path: ".env.local" }); } catch { /* dotenv not installed */ }
+
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
@@ -54,6 +57,12 @@ const { effectivePermission } = require("./agent");
 
 // ── Supabase auth & workspace layer (server-only) ──
 const supabaseRepo = require("./server-supabase");
+
+// ── Durable authenticated routes (server-authorized core workflow) ──
+let durableRoutes = null;
+try { durableRoutes = require("./server-durable-routes"); } catch (e) {
+  console.warn("durable routes unavailable:", e.message);
+}
 
 
 const PORT = process.env.PORT || 3000;
@@ -443,6 +452,11 @@ async function requireWorkspaceAuth(req, workspaceId) {
 
 async function handleRequest(req, res) {
   const url = new URL(req.url, "http://localhost");
+
+  // ── Durable authenticated routes (server-authorized core workflow) ──
+  if (url.pathname.startsWith("/api/durable/") && durableRoutes && durableRoutes.handleDurable) {
+    return durableRoutes.handleDurable(req, res, url);
+  }
 
   /* ── Auth: session verification ── */
   if (url.pathname === "/api/auth/session" && req.method === "GET") {

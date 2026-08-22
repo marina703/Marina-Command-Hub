@@ -1,3 +1,6 @@
+// Load .env.local before any other imports so process.env is populated.
+try { require("dotenv").config({ path: ".env.local" }); } catch { /* dotenv not installed */ }
+
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");

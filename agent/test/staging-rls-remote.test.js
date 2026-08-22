@@ -9,6 +9,9 @@
    Default behavior: dry-run/report-only.
    ============================================================ */
 
+// Load .env.local before reading process.env
+try { require("dotenv").config({ path: ".env.local" }); } catch { /* dotenv not installed */ }
+
 const assert = require("node:assert/strict");
 
 // ── Guard: require explicit opt-in ──
@@ -357,9 +360,12 @@ async function phase7_verifyServiceRoleIsolation() {
         !content.includes("SERVICE_ROLE"),
         `Service-role reference found in dist: ${file}`,
       );
+      // Check for the actual service-role key (not the anon key which is safe in bundles).
+      // Both keys share the same JWT header and project ref in the payload.
+      // The unique identifier is the base64-encoded "service_role" string in the payload.
       assert.ok(
-        !content.includes("eyJ"), // JWT prefix — overly broad but safe
-        `Possible JWT token found in dist: ${file}`,
+        !content.includes("InNlcnZpY2Vfcm9sZSI"),
+        `Service-role key payload fragment found in dist: ${file}`,
       );
     }
     log("Phase 7", `Checked ${files.length} dist files — no service-role keys found — PASS`);
