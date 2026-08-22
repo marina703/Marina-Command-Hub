@@ -192,6 +192,11 @@ test("security hardening: private schema exists and is secured", () => {
     sql.includes("grant usage on schema private to postgres, service_role"),
     "must grant usage only to internal roles",
   );
+  // authenticated needs schema USAGE for RLS policy name resolution
+  assert.ok(
+    sql.includes("grant usage on schema private to authenticated"),
+    "must grant schema USAGE to authenticated for RLS policy evaluation",
+  );
 });
 
 test("security hardening: all SECURITY DEFINER functions use fixed search_path", () => {
@@ -223,6 +228,59 @@ test("security hardening: no SECURITY DEFINER helper callable by anon", () => {
   const grantMatches = sql.match(/grant execute on function private\.\w+/gi) || [];
   assert.equal(grantMatches.length, 1, "only one private function should be granted to authenticated");
   assert.ok(grantMatches[0].includes("has_workspace_role"), "only has_workspace_role granted to authenticated");
+});
+
+test("security hardening: anon and public lack USAGE and EXECUTE on private helpers", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const sql = fs.readFileSync(
+    path.join(__dirname, "..", "..", "supabase", "migrations", "20260822000001_security_hardening.sql"),
+    "utf8",
+  );
+  // Section A revokes all schema privileges from exposed roles
+  assert.ok(
+    sql.includes("revoke all on schema private from public, anon, authenticated"),
+    "must revoke all schema privileges from exposed roles",
+  );
+  // Section C revokes all function EXECUTE from exposed roles
+  assert.ok(
+    sql.includes("revoke execute on all functions in schema private from public, anon, authenticated"),
+    "must revoke all function EXECUTE from exposed roles",
+  );
+  // Only postgres, service_role, and authenticated get schema USAGE
+  const schemaUsageGrants = sql.match(/grant usage on schema private to .+/gi) || [];
+  for (const grant of schemaUsageGrants) {
+    assert.ok(
+      !grant.includes("to anon") && !grant.includes("to public"),
+      `schema USAGE must not be granted to anon or public: ${grant}`,
+    );
+  }
+  // Only authenticated gets EXECUTE on has_workspace_role (no anon or public)
+  const execGrants = sql.match(/grant execute on function private\.\w+\([^)]*\) to .+/gi) || [];
+  for (const grant of execGrants) {
+    assert.ok(
+      !grant.includes("to anon") && !grant.includes("to public"),
+      `EXECUTE on private functions must not be granted to anon or public: ${grant}`,
+    );
+  }
+});
+
+test("security hardening: private schema is not exposed via Data API", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const config = fs.readFileSync(
+    path.join(__dirname, "..", "..", "supabase", "config.toml"),
+    "utf8",
+  );
+  // Supabase Data API exposes schemas listed in the `schemas` config key.
+  // The private schema must NOT appear there — only public and graphql_public.
+  const schemasMatch = config.match(/^schemas\s*=\s*\[([^\]]*)\]/m);
+  assert.ok(schemasMatch, "config.toml must have a schemas entry");
+  const exposedSchemas = schemasMatch[1];
+  assert.ok(
+    !exposedSchemas.includes('"private"'),
+    "private schema must not be listed in Data API schemas",
+  );
 });
 
 test("security hardening: workspace bootstrap is server-only", () => {

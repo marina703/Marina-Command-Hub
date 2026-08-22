@@ -39,9 +39,18 @@ Does NOT modify the already-applied `20260821000001_core_schema.sql`.
 | Action | Roles |
 |---|---|
 | REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA private FROM public, anon, authenticated | All exposed roles |
-| GRANT EXECUTE ON FUNCTION private.has_workspace_role(uuid, text) TO authenticated | Only function needed for RLS policy evaluation |
 
-### D. Server-Only Workspace Bootstrap
+### D. Minimal Access Grants for RLS Policy Evaluation
+
+| Action | Roles | Purpose |
+|---|---|---|
+| GRANT USAGE ON SCHEMA private TO postgres, service_role | Internal roles | Full schema access |
+| GRANT USAGE ON SCHEMA private TO authenticated | End-user role | Name resolution only — allows Postgres to resolve `private.has_workspace_role(...)` in RLS policy expressions. Does NOT expose the schema through Supabase's Data API (not listed in `db-schemas`) and does NOT grant table/function access by itself. |
+| GRANT EXECUTE ON FUNCTION private.has_workspace_role(uuid, text) TO authenticated | End-user role | Only function granted to authenticated — required for RLS policy evaluation |
+
+> **Correction (2026-08-22):** The original migration granted EXECUTE on `private.has_workspace_role` to `authenticated` but omitted `GRANT USAGE ON SCHEMA private TO authenticated`. Postgres requires both schema USAGE (name resolution) and function EXECUTE to invoke a schema-qualified function. Without the USAGE grant, authenticated requests would get `permission denied for schema private` when RLS evaluates `private.has_workspace_role(...)`.
+
+### E. Server-Only Workspace Bootstrap
 
 | Action | Detail |
 |---|---|
@@ -50,7 +59,7 @@ Does NOT modify the already-applied `20260821000001_core_schema.sql`.
 | GRANT EXECUTE TO service_role | Only callable by server-side service-role client |
 | DROP FUNCTION public.create_workspace_with_owner(text, text) | Old public bootstrap removed |
 
-### E. RLS Policies Updated
+### F. RLS Policies Updated
 
 - 60 policies updated via ALTER POLICY
 - All policies now reference private.has_workspace_role instead of public.has_workspace_role
@@ -58,12 +67,12 @@ Does NOT modify the already-applied `20260821000001_core_schema.sql`.
 - UPDATE policies now include WITH CHECK expressions for tenant retention
 - Storage policies updated to reference private.has_workspace_role
 
-### F. Triggers Updated
+### G. Triggers Updated
 
 - 7 triggers dropped and recreated referencing private.handle_updated_at() and private.handle_new_user()
 - Old public trigger functions dropped
 
-### G. Obsolete Public Functions Dropped
+### H. Obsolete Public Functions Dropped
 
 | Function | Reason |
 |---|---|
@@ -90,23 +99,25 @@ Added createWorkspace({ userId, name, slug }) function:
 
 ## Tests
 
-### Test Results (66/66 pass)
+### Test Results (68/68 pass)
 
 ```
 npm test
-tests 66
-pass 66
+tests 68
+pass 68
 fail 0
-duration_ms 3665.5142
+duration_ms 4091.9278
 ```
 
-### New Security Hardening Tests (9 tests)
+### Security Hardening Tests (11 tests)
 
 | Test | Validates |
 |---|---|
-| private schema exists and is secured | Schema creation + revoke/grant |
+| private schema exists and is secured | Schema creation + revoke/grant + USAGE for authenticated |
 | all SECURITY DEFINER functions use fixed search_path | No mutable search_path |
 | no SECURITY DEFINER helper callable by anon | EXECUTE revoked from exposed roles |
+| anon and public lack USAGE and EXECUTE on private helpers | No USAGE/EXECUTE grants to anon or public |
+| private schema is not exposed via Data API | `private` not in config.toml `schemas` |
 | workspace bootstrap is server-only | Private function + public wrapper restricted to service_role |
 | RLS policies reference private.has_workspace_role | All policies updated |
 | all policies restricted to authenticated role | TO authenticated on every policy |
@@ -119,7 +130,7 @@ duration_ms 3665.5142
 ```
 npm run build
 1903 modules transformed.
-built in 374ms
+built in 565ms
 ```
 
 ---
@@ -152,12 +163,49 @@ built in 374ms
 
 ---
 
+## Post-Application Verification
+
+After applying the migration, run this query to confirm both schema USAGE and function EXECUTE privileges are correct:
+
+```sql
+-- Verify schema USAGE grants
+SELECT
+  n.nspname AS schema,
+  r.rolname AS grantee,
+  'USAGE' AS privilege_type
+FROM pg_namespace n
+JOIN pg_roles r ON has_schema_privilege(r.rolname, n.nspname, 'USAGE')
+WHERE n.nspname = 'private'
+  AND r.rolname IN ('authenticated', 'anon', 'public', 'postgres', 'service_role')
+ORDER BY r.rolname;
+
+-- Expected: authenticated, postgres, service_role (NOT anon or public)
+
+-- Verify function EXECUTE grants
+SELECT
+  n.nspname AS schema,
+  p.proname AS function,
+  pg_get_function_arguments(p.oid) AS args,
+  r.rolname AS grantee
+FROM pg_proc p
+JOIN pg_namespace n ON p.pronamespace = n.oid
+JOIN pg_roles r ON has_function_privilege(r.rolname, p.oid, 'EXECUTE')
+WHERE n.nspname = 'private'
+  AND r.rolname IN ('authenticated', 'anon', 'public')
+ORDER BY r.rolname, p.proname;
+
+-- Expected: only (authenticated, has_workspace_role, uuid, text)
+-- anon and public should have zero rows
+```
+
+---
+
 ## Remote Application Confirmation Required
 
 To apply this migration to the marinaai-staging Supabase project:
 
 1. Confirm the migration should be applied: supabase db push
-2. After application, verify no public functions remain that should be private
+2. Run the post-application verification queries above
 3. Verify RLS policies still work by running the verification suite against the live database
 4. Verify the artifacts bucket remains private
 

@@ -12,7 +12,7 @@
 --   A. Create and secure private schema
 --   B. Recreate helper functions in private schema
 --   C. Revoke EXECUTE from exposed roles
---   D. Grant minimal EXECUTE for RLS policy evaluation
+--   D. Grant minimal access for RLS policy evaluation
 --   E. Create server-only public wrapper for workspace bootstrap
 --   F. Update all RLS policies (private references + TO authenticated)
 --   G. Update triggers to reference private functions
@@ -137,11 +137,18 @@ $$;
 revoke execute on all functions in schema private from public, anon, authenticated;
 
 -- ============================================================
--- D. Grant minimal EXECUTE for RLS policy evaluation
+-- D. Grant minimal access for RLS policy evaluation
 -- ============================================================
 -- RLS policy expressions are evaluated with the session user's
--- privileges. The authenticated role needs EXECUTE on the
--- membership helper so that workspace-scoped policies work.
+-- privileges. The authenticated role needs both schema USAGE
+-- (name resolution) and function EXECUTE to invoke
+-- private.has_workspace_role(...) from within policy clauses.
+--
+-- Schema USAGE allows Postgres to resolve the schema-qualified
+-- function name but does NOT expose the private schema through
+-- Supabase's Data API (the schema is not listed in db-schemas)
+-- and does NOT grant access to any tables or other functions.
+grant usage on schema private to authenticated;
 grant execute on function private.has_workspace_role(uuid, text) to authenticated;
 
 -- ============================================================
