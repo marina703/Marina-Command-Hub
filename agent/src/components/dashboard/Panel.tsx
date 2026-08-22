@@ -36,6 +36,8 @@ interface PanelProps {
   /** Optional metric label shown next to the progress bar. */
   progressLabel?: string;
   className?: string;
+  /** Optional DOM id used as an in-page anchor target. */
+  id?: string;
 }
 
 export function Panel({
@@ -45,9 +47,11 @@ export function Panel({
   progress,
   progressLabel,
   className,
+  id,
 }: PanelProps) {
   return (
     <div
+      id={id}
       className={cn(
         "flex flex-col rounded-2xl border border-border-muted bg-surface-2/95 p-4 shadow-card",
         className,

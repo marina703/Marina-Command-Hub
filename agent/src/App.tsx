@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useDashboard } from "@/hooks/useDashboard";
-import { getConfig, runAutonomousLoop } from "@/lib/api";
+import { getConfig, runAutonomousLoop, sendChat } from "@/lib/api";
 import type { LLMConfig, LogEntry, PresetConfig } from "@/types";
 
 import {
@@ -22,6 +22,9 @@ import {
   CommandHubUpdates,
   CommandHubHeader,
   WorkspacePanels,
+  ApprovalInbox,
+  SecurityPanel,
+  IntegrationsPanel,
 } from "@/components/dashboard";
 import type { ViewId } from "@/components/dashboard/Sidebar";
 import type { ChatMessage } from "@/components/dashboard/AssistantConsole";
@@ -162,18 +165,36 @@ export default function App() {
     setMessages((prev) => [...prev, message]);
   }, []);
 
+  /** Real quick-prompt handler: sends to /api/chat, records history, returns reply. */
   const handleSendPrompt = useCallback(
-    (prompt: string) => {
+    async (prompt: string): Promise<string> => {
       handleAddMessage({
         id: `msg-${Date.now()}`,
         type: "user",
         text: prompt,
       });
-      toast.success("Prompt sent to workspace team", {
-        description: prompt,
-      });
+      try {
+        const res = await sendChat(prompt, true);
+        const reply = res.reply || "Task processed.";
+        handleAddMessage({
+          id: `sys-${Date.now()}`,
+          type: "system",
+          text: reply,
+        });
+        void refresh();
+        return reply;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to process prompt.";
+        handleAddMessage({
+          id: `err-${Date.now()}`,
+          type: "system",
+          text: `Error: ${message}`,
+        });
+        throw err;
+      }
     },
-    [handleAddMessage],
+    [handleAddMessage, refresh],
   );
 
   const handleToggleStream = useCallback(() => setStreaming((s) => !s), []);
@@ -270,7 +291,7 @@ export default function App() {
 
           {activeView === "dashboard" && (
             <>
-              <div className="mb-4">
+              <div id="hub-workspace-panels" className="mb-4 scroll-mt-24">
                 <ErrorBoundary label="Workspace panels">
                   <WorkspacePanels onRefresh={refresh} />
                 </ErrorBoundary>
@@ -295,9 +316,11 @@ export default function App() {
                   />
                 </ErrorBoundary>
 
-                <ErrorBoundary label="Run history">
-                  <RunHistoryTable runs={runs} loading={loading} />
-                </ErrorBoundary>
+                <div id="hub-run-history" className="contents scroll-mt-24">
+                  <ErrorBoundary label="Run history">
+                    <RunHistoryTable runs={runs} loading={loading} />
+                  </ErrorBoundary>
+                </div>
               </div>
 
               <div className="flex flex-col gap-4">
@@ -312,9 +335,11 @@ export default function App() {
                   />
                 </ErrorBoundary>
 
-                <ErrorBoundary label="Services">
-                  <ServicesMonitor services={data?.services ?? []} />
-                </ErrorBoundary>
+                <div id="hub-services-monitor" className="contents scroll-mt-24">
+                  <ErrorBoundary label="Services">
+                    <ServicesMonitor services={data?.services ?? []} />
+                  </ErrorBoundary>
+                </div>
 
                 <ErrorBoundary label="Command Hub updates">
                   <CommandHubUpdates updates={data?.commandHubUpdates ?? []} onRefresh={refresh} />
@@ -400,6 +425,43 @@ export default function App() {
               <ErrorBoundary label="Services">
                 <ServicesMonitor services={data?.services ?? []} />
               </ErrorBoundary>
+            </div>
+          )}
+
+          {activeView === "approvals" && (
+            <ErrorBoundary label="Approval queue">
+              <ApprovalInbox onRefresh={refresh} />
+            </ErrorBoundary>
+          )}
+
+          {activeView === "security" && (
+            <ErrorBoundary label="Settings & security">
+              <SecurityPanel />
+            </ErrorBoundary>
+          )}
+
+          {activeView === "integrations" && (
+            <ErrorBoundary label="Integrations & tools">
+              <IntegrationsPanel />
+            </ErrorBoundary>
+          )}
+
+          {activeView === "automations" && (
+            <div className="rounded-2xl border border-border-muted bg-surface-2 p-6 text-center shadow-card">
+              <h2 className="mb-2 text-lg font-bold text-text-primary">Automations</h2>
+              <p className="mb-4 text-sm text-text-secondary">
+                Durable scheduled workflows require a persistent scheduler backend.
+                This feature is planned for Phase E and is not yet enabled.
+              </p>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-status-warning/30 bg-status-warning/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-status-warning">
+                Not enabled
+              </span>
+              <p className="mt-4 text-xs text-text-muted">
+                Automations will support: schedule builder, durable run history,
+                pause/resume, templates, idempotency, bounded retries, dead-letter
+                states, and per-workspace concurrency — backed by a durable queue,
+                not a browser tab.
+              </p>
             </div>
           )}
         </main>

@@ -55,9 +55,21 @@ interface CommandHubHeaderProps {
   onRunWorkspace?: () => void;
   /** Called when the user clicks "Refresh". */
   onRefresh?: () => void;
-  /** Called when the user submits a quick prompt via "Send". */
-  onSend?: (prompt: string) => void;
+  /**
+   * Called when the user submits a quick prompt via "Send".
+   * Must perform the real backend action and resolve with the reply text.
+   */
+  onSend?: (prompt: string) => Promise<string>;
 }
+
+/** Anchor ids of dashboard regions the filter pills scroll to. */
+const PILL_TARGETS = [
+  "hub-summary-cards",
+  "hub-workspace-panels",
+  "hub-one-click-tools",
+  "hub-run-history",
+  "hub-services-monitor",
+];
 
 const PILLS = [
   "1 Immediate Focus",
@@ -80,6 +92,8 @@ export function CommandHubHeader({
 }: CommandHubHeaderProps) {
   const [prompt, setPrompt] = useState("");
   const [activePill, setActivePill] = useState(0);
+  const [sending, setSending] = useState(false);
+  const [reply, setReply] = useState<string | null>(null);
 
   const activePct =
     workspaceCount > 0
@@ -112,14 +126,38 @@ export function CommandHubHeader({
     },
   ];
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const trimmed = prompt.trim();
     if (!trimmed) {
       toast.info("Enter a prompt first");
       return;
     }
-    onSend?.(trimmed);
-    setPrompt("");
+    if (!onSend || sending) {
+      if (!onSend) toast.error("Prompt handling not configured");
+      return;
+    }
+    setSending(true);
+    setReply(null);
+    try {
+      const response = await onSend(trimmed);
+      setReply(response || "Task processed.");
+      setPrompt("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to process prompt");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handlePillClick = (index: number) => {
+    setActivePill(index);
+    const targetId = PILL_TARGETS[index];
+    if (targetId) {
+      document.getElementById(targetId)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
   };
 
   return (
@@ -168,9 +206,10 @@ export function CommandHubHeader({
           <button
             key={pill}
             type="button"
-            onClick={() => setActivePill(i)}
+            onClick={() => handlePillClick(i)}
+            title="Scroll to this section"
             className={cn(
-              "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-all",
+              "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/60",
               activePill === i
                 ? "border-accent-primary/60 bg-accent-primary/15 text-accent-primary shadow-glow-primary"
                 : "border-border-muted bg-surface-2 text-text-secondary hover:border-accent-primary/40 hover:text-text-primary",
@@ -182,7 +221,10 @@ export function CommandHubHeader({
       </div>
 
       {/* 4-card summary grid */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div
+        id="hub-summary-cards"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 scroll-mt-24"
+      >
         {cards.map((card) => (
           <div
             key={card.title}
@@ -222,8 +264,10 @@ export function CommandHubHeader({
           onKeyDown={(e) => {
             if (e.key === "Enter") handleSend();
           }}
+          disabled={sending}
+          aria-label="Quick prompt for your workspace team"
           placeholder="Type a quick prompt or command for your workspace team..."
-          className="min-w-0 flex-1 rounded-xl border border-border-muted bg-white/3 px-3.5 py-2.5 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent-primary focus:shadow-glow-primary"
+          className="min-w-0 flex-1 rounded-xl border border-border-muted bg-white/3 px-3.5 py-2.5 text-sm text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-accent-primary focus:shadow-glow-primary disabled:opacity-60"
         />
         <div className="flex shrink-0 items-center gap-2">
           <Button variant="ghost" onClick={onRefresh}>
@@ -234,12 +278,28 @@ export function CommandHubHeader({
             variant="primary"
             className="bg-gradient-to-br from-fuchsia-600 to-pink-600 border-fuchsia-500/50"
             onClick={handleSend}
+            loading={sending}
           >
             <Send className="h-4 w-4" />
             Send
           </Button>
         </div>
       </div>
+
+      {/* Real assistant reply (compact, same visual language) */}
+      {reply && (
+        <div
+          role="status"
+          className="rounded-2xl border border-border-muted bg-surface-2/95 p-4 shadow-card"
+        >
+          <p className="mb-1 text-[0.68rem] font-bold uppercase tracking-[0.16em] text-accent-primary">
+            AI Team Response
+          </p>
+          <p className="m-0 whitespace-pre-wrap text-sm leading-relaxed text-text-secondary">
+            {reply.length > 600 ? `${reply.slice(0, 600)}…` : reply}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

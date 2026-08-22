@@ -17,3 +17,7 @@ export { CommandHubHeader } from "./CommandHubHeader";
 export { PlaybookBar, PLAYBOOKS, type PlaybookDef } from "./PlaybookBar";
 export { Panel, type PanelItem, type PanelStatusTone } from "./Panel";
 export { WorkspacePanels } from "./WorkspacePanels";
+export { ApprovalInbox } from "./ApprovalInbox";
+export { SecurityPanel } from "./SecurityPanel";
+export { TaskDetail } from "./TaskDetail";
+export { IntegrationsPanel } from "./IntegrationsPanel";

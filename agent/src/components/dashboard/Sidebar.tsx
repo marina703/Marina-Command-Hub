@@ -9,6 +9,9 @@ import {
   HeartPulse,
   Lock,
   ChevronDown,
+  ShieldCheck,
+  Settings2,
+  Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DashboardState } from "@/types";
@@ -17,10 +20,15 @@ export type ViewId =
   | "dashboard"
   | "assistant"
   | "tasks"
+  | "taskDetail"
+  | "approvals"
   | "projects"
   | "geminiSync"
   | "models"
-  | "system";
+  | "system"
+  | "security"
+  | "integrations"
+  | "automations";
 
 export interface SidebarProps {
   activeView: ViewId;
@@ -47,6 +55,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "dashboard", label: "Command Hub", icon: <LayoutDashboard className="h-4 w-4" /> },
       { id: "assistant", label: "AI Assistant", icon: <Bot className="h-4 w-4" /> },
       { id: "tasks", label: "Task Hub", icon: <ListChecks className="h-4 w-4" /> },
+      { id: "approvals", label: "Approvals", icon: <ShieldCheck className="h-4 w-4" /> },
     ],
   },
   {
@@ -59,9 +68,11 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Integrations",
     items: [
+      { id: "integrations", label: "Tools & Integrations", icon: <Wrench className="h-4 w-4" /> },
       { id: "geminiSync", label: "Gemini Sync", icon: <RefreshCw className="h-4 w-4" /> },
       { id: "models", label: "LLM Hub", icon: <Cpu className="h-4 w-4" /> },
       { id: "system", label: "System Health", icon: <HeartPulse className="h-4 w-4" /> },
+      { id: "security", label: "Settings & Security", icon: <Settings2 className="h-4 w-4" /> },
     ],
   },
 ];
