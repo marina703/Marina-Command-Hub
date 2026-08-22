@@ -40,12 +40,14 @@
 - **Migrations prepared**: 1 migration file (`20260821000001_core_schema.sql`) — **not yet applied** to the remote Supabase project.
 - **Migration impact summary**:
   - Creates 17 tables: `profiles`, `workspaces`, `workspace_memberships`, `projects`, `tasks`, `task_context_items`, `plans`, `plan_steps`, `runs`, `run_events`, `approval_requests`, `artifacts`, `sources`, `audit_events`, `tool_invocations`, `integration_connections`, `automations`
-  - Creates 2 helper functions: `has_workspace_role()`, `handle_new_user()`
+  - Creates 3 helper functions: `has_workspace_role()`, `user_can_access_workspace()`, `handle_new_user()`
+  - Creates 1 bootstrap function: `create_workspace_with_owner()` (SECURITY DEFINER, authenticated-only, idempotent)
   - Creates 1 private storage bucket: `artifacts` (public = false, 50MB limit, MIME-type allowlist)
   - Creates RLS policies on all tables (viewer/member/admin/owner hierarchy)
   - Creates storage RLS policies (workspace-scoped read/write/delete)
   - Creates `updated_at` triggers on 6 tables
   - Creates auto-profile trigger on `auth.users` insert
+  - **Ordering corrected (2026-08-22)**: Extensions → base tables → domain tables → helper functions → bootstrap function → RLS enable + policies → storage → triggers. See `MIGRATION_DEFECT_REVIEW.md` for details.
 - **RLS verification result**: Workspace isolation tests pass locally (54/54 tests). Cross-workspace access correctly throws `AuthorizationError`. RLS policies are defined in the migration but have not been tested against the live remote database yet (migration not applied).
 - **Live JSON migration**: **Pending confirmation**. The dry-run report shows 16 records (12 tasks, 2 ideas, 2 summaries) that would be migrated. 12 records lack a `workspaceId` and would be assigned to the default workspace. No live migration has been performed.
 
@@ -91,20 +93,20 @@ Before I apply the schema migration to the connected remote Supabase project, I 
 
 ## Test/Build Results
 
-### Tests (54/54 pass)
+### Tests (57/57 pass — 3 new ordering/bootstrap tests)
 ```
 npm test
-ℹ tests 54
-ℹ pass 54
+ℹ tests 57
+ℹ pass 57
 ℹ fail 0
-ℹ duration_ms 3878.7751
+ℹ duration_ms 3676.4598
 ```
 
 ### Build
 ```
 npm run build
 ✓ 1903 modules transformed.
-✓ built in 434ms
+✓ built in 813ms
 ```
 
 ### CTA Link-Integrity

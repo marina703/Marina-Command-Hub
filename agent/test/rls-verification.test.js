@@ -89,6 +89,91 @@ test("repository returns null client when not configured", () => {
   assert.equal(supabaseRepo.getAnonClient(), null);
 });
 
+/* ── Migration ordering and bootstrap contract tests ── */
+
+test("migration defines workspace_memberships before has_workspace_role", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const sql = fs.readFileSync(
+    path.join(__dirname, "..", "..", "supabase", "migrations", "20260821000001_core_schema.sql"),
+    "utf8",
+  );
+  const wmPos = sql.indexOf("create table if not exists public.workspace_memberships");
+  const fnPos = sql.indexOf("create or replace function public.has_workspace_role");
+  assert.ok(wmPos > -1, "workspace_memberships table definition must exist");
+  assert.ok(fnPos > -1, "has_workspace_role function definition must exist");
+  assert.ok(wmPos < fnPos, "workspace_memberships must be defined before has_workspace_role");
+});
+
+test("migration ordering: tables before functions before RLS before storage before triggers", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const sql = fs.readFileSync(
+    path.join(__dirname, "..", "..", "supabase", "migrations", "20260821000001_core_schema.sql"),
+    "utf8",
+  );
+  const extensionsPos = sql.indexOf("create extension");
+  const profilesPos = sql.indexOf("create table if not exists public.profiles");
+  const workspacesPos = sql.indexOf("create table if not exists public.workspaces");
+  const wmPos = sql.indexOf("create table if not exists public.workspace_memberships");
+  const hasRolePos = sql.indexOf("create or replace function public.has_workspace_role");
+  const bootstrapPos = sql.indexOf("create or replace function public.create_workspace_with_owner");
+  const firstRlsPos = sql.indexOf("enable row level security");
+  const storagePos = sql.indexOf("insert into storage.buckets");
+  const triggerPos = sql.indexOf("create or replace function public.handle_updated_at");
+
+  assert.ok(extensionsPos < profilesPos, "extensions before profiles");
+  assert.ok(profilesPos < workspacesPos, "profiles before workspaces");
+  assert.ok(workspacesPos < wmPos, "workspaces before workspace_memberships");
+  assert.ok(wmPos < hasRolePos, "workspace_memberships before has_workspace_role");
+  assert.ok(hasRolePos < bootstrapPos, "has_workspace_role before bootstrap function");
+  assert.ok(bootstrapPos < firstRlsPos, "bootstrap function before RLS enable");
+  assert.ok(firstRlsPos < storagePos, "RLS before storage bucket");
+  assert.ok(storagePos < triggerPos, "storage before triggers");
+});
+
+test("migration includes create_workspace_with_owner bootstrap function", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const sql = fs.readFileSync(
+    path.join(__dirname, "..", "..", "supabase", "migrations", "20260821000001_core_schema.sql"),
+    "utf8",
+  );
+
+  // Function definition exists
+  const fnStart = sql.indexOf("create or replace function public.create_workspace_with_owner");
+  assert.ok(fnStart > -1, "create_workspace_with_owner function must be defined");
+
+  // Get the function body (up to the closing $$;)
+  const fnEnd = sql.indexOf("$$;", fnStart);
+  assert.ok(fnEnd > -1, "function body must be properly terminated");
+  const fnDef = sql.substring(fnStart, fnEnd);
+
+  // SECURITY DEFINER
+  assert.ok(fnDef.includes("security definer"), "function must be SECURITY DEFINER");
+  // Explicit search_path
+  assert.ok(fnDef.includes("set search_path = public"), "function must have explicit search_path");
+  // auth.uid() check
+  assert.ok(fnDef.includes("auth.uid()"), "function must check auth.uid()");
+  // Rejects anonymous
+  assert.ok(fnDef.includes("is null"), "function must reject anonymous users");
+  // Creates owner membership
+  assert.ok(fnDef.includes("'owner'"), "function must create owner membership");
+  // Creates active status
+  assert.ok(fnDef.includes("'active'"), "function must create active membership");
+
+  // Granted to authenticated only (check after function definition)
+  const afterFn = sql.substring(fnEnd);
+  assert.ok(
+    afterFn.includes("grant execute on function public.create_workspace_with_owner(text, text) to authenticated"),
+    "function must be granted to authenticated role",
+  );
+  assert.ok(
+    afterFn.includes("revoke execute on function public.create_workspace_with_owner(text, text) from public"),
+    "function must be revoked from public/anon",
+  );
+});
+
 /* ── Migration tool tests ── */
 
 test("migration tool produces dry-run report", () => {

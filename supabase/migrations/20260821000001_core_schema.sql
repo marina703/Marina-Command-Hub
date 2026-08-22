@@ -7,11 +7,412 @@
 --
 -- All tenant-owned tables enforce workspace isolation via RLS.
 -- No public buckets or anonymous access are created.
+--
+-- Ordering (critical for dependency resolution):
+--   extensions → base tables → domain tables → helper functions →
+--   bootstrap function → RLS enable + policies → storage bucket +
+--   storage RLS → triggers
 -- ============================================================
 
 -- ── Extensions ──
 create extension if not exists "uuid-ossp";
 create extension if not exists "pgcrypto";
+
+-- ============================================================
+-- 1. Profiles (extends auth.users)
+-- ============================================================
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  display_name text not null default '',
+  avatar_url text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- ============================================================
+-- 2. Workspaces
+-- ============================================================
+create table if not exists public.workspaces (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,
+  slug text unique not null,
+  description text default '',
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_workspaces_slug on public.workspaces(slug);
+
+-- ============================================================
+-- 3. Workspace Memberships
+-- ============================================================
+create table if not exists public.workspace_memberships (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null default 'member'
+    check (role in ('owner', 'admin', 'member', 'viewer')),
+  status text not null default 'active'
+    check (status in ('active', 'invited', 'removed')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(workspace_id, user_id)
+);
+
+create index if not exists idx_wm_workspace on public.workspace_memberships(workspace_id);
+create index if not exists idx_wm_user on public.workspace_memberships(user_id);
+
+-- ============================================================
+-- 4. Projects
+-- ============================================================
+create table if not exists public.projects (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  name text not null,
+  description text default '',
+  allowed_tools jsonb default '[]'::jsonb,
+  default_budget_limit numeric(10,2) default 100.00,
+  default_time_limit_seconds integer default 300,
+  owner_id uuid references auth.users(id),
+  archived boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_projects_workspace on public.projects(workspace_id);
+
+-- ============================================================
+-- 5. Tasks
+-- ============================================================
+create table if not exists public.tasks (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  project_id uuid references public.projects(id) on delete set null,
+  creator_id uuid references auth.users(id),
+  title text not null,
+  desired_outcome text default '',
+  instructions text default '',
+  status text not null default 'draft'
+    check (status in ('draft', 'planning', 'awaiting_plan_review', 'queued',
+                      'running', 'awaiting_approval', 'paused',
+                      'completed', 'failed', 'cancelled')),
+  priority text not null default 'Medium'
+    check (priority in ('Low', 'Medium', 'High', 'Critical')),
+  active_plan_version integer,
+  budget_limit numeric(10,2),
+  time_limit_seconds integer,
+  cancelled_at timestamptz,
+  cancellation_reason text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_tasks_workspace on public.tasks(workspace_id);
+create index if not exists idx_tasks_project on public.tasks(project_id);
+create index if not exists idx_tasks_status on public.tasks(status);
+create index if not exists idx_tasks_creator on public.tasks(creator_id);
+
+-- ============================================================
+-- 6. Task Context Items
+-- ============================================================
+create table if not exists public.task_context_items (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  project_id uuid references public.projects(id) on delete set null,
+  type text not null default 'text'
+    check (type in ('text', 'file', 'url', 'note', 'connection_reference')),
+  display_name text not null,
+  storage_ref text,
+  provenance jsonb default '{}'::jsonb,
+  sensitivity_label text not null default 'internal'
+    check (sensitivity_label in ('public', 'internal', 'confidential', 'restricted')),
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_tci_task on public.task_context_items(task_id);
+
+-- ============================================================
+-- 7. Plans
+-- ============================================================
+create table if not exists public.plans (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  version integer not null default 1,
+  status text not null default 'draft'
+    check (status in ('draft', 'approved', 'superseded', 'rejected')),
+  author text not null default 'system',
+  summary text default '',
+  assumptions jsonb default '[]'::jsonb,
+  risks jsonb default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  approved_at timestamptz,
+  unique(task_id, version)
+);
+
+create index if not exists idx_plans_task on public.plans(task_id);
+create index if not exists idx_plans_workspace on public.plans(workspace_id);
+
+-- ============================================================
+-- 8. Plan Steps
+-- ============================================================
+create table if not exists public.plan_steps (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  plan_id uuid not null references public.plans(id) on delete cascade,
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  position integer not null default 0,
+  title text not null,
+  purpose text default '',
+  dependencies jsonb default '[]'::jsonb,
+  tool_class text default '',
+  input_summary text default '',
+  expected_output text default '',
+  risk_tier text not null default 'low'
+    check (risk_tier in ('low', 'moderate', 'high', 'critical')),
+  requires_approval boolean not null default false,
+  status text not null default 'pending'
+    check (status in ('pending', 'running', 'awaiting_approval',
+                      'completed', 'failed', 'skipped', 'cancelled')),
+  estimated_duration integer,
+  estimated_cost numeric(10,2),
+  retry_policy jsonb default '{"maxRetries": 0}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_ps_plan on public.plan_steps(plan_id);
+create index if not exists idx_ps_task on public.plan_steps(task_id);
+
+-- ============================================================
+-- 9. Runs
+-- ============================================================
+create table if not exists public.runs (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  plan_id uuid references public.plans(id) on delete set null,
+  status text not null default 'queued'
+    check (status in ('queued', 'active', 'succeeded', 'failed',
+                      'cancelled', 'timed_out')),
+  attempt_count integer not null default 1,
+  parent_run_id uuid references public.runs(id) on delete set null,
+  provider text default '',
+  tool_summary text default '',
+  started_at timestamptz,
+  ended_at timestamptz,
+  failure_classification text,
+  budget_used numeric(10,2) default 0,
+  time_used_ms bigint default 0,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_runs_task on public.runs(task_id);
+create index if not exists idx_runs_workspace on public.runs(workspace_id);
+create index if not exists idx_runs_status on public.runs(status);
+
+-- ============================================================
+-- 10. Run Events
+-- ============================================================
+create table if not exists public.run_events (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  run_id uuid not null references public.runs(id) on delete cascade,
+  task_id uuid references public.tasks(id) on delete set null,
+  sequence integer not null default 0,
+  event text not null,
+  summary text default '',
+  metadata jsonb default '{}'::jsonb,
+  actor text not null default 'system'
+    check (actor in ('user', 'system', 'provider', 'tool')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_re_run on public.run_events(run_id);
+create index if not exists idx_re_task on public.run_events(task_id);
+
+-- ============================================================
+-- 11. Approval Requests
+-- ============================================================
+create table if not exists public.approval_requests (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  project_id uuid references public.projects(id) on delete set null,
+  task_id uuid references public.tasks(id) on delete set null,
+  run_id uuid references public.runs(id) on delete set null,
+  plan_step_id uuid references public.plan_steps(id) on delete set null,
+  action_type text not null,
+  action_target text default '',
+  payload_hash text not null,
+  payload_preview jsonb default '{}'::jsonb,
+  risk_tier text not null default 'high'
+    check (risk_tier in ('low', 'moderate', 'high', 'critical')),
+  reason text default '',
+  requested_by uuid references auth.users(id),
+  status text not null default 'pending'
+    check (status in ('pending', 'approved', 'rejected', 'expired', 'cancelled', 'executed')),
+  expires_at timestamptz not null default (now() + interval '15 minutes'),
+  decided_at timestamptz,
+  decided_by uuid references auth.users(id),
+  decision_note text default '',
+  executed_result text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_ar_workspace on public.approval_requests(workspace_id);
+create index if not exists idx_ar_status on public.approval_requests(status);
+create index if not exists idx_ar_task on public.approval_requests(task_id);
+
+-- ============================================================
+-- 12. Artifacts
+-- ============================================================
+create table if not exists public.artifacts (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  project_id uuid references public.projects(id) on delete set null,
+  task_id uuid references public.tasks(id) on delete set null,
+  run_id uuid references public.runs(id) on delete set null,
+  type text not null default 'document',
+  display_name text not null,
+  media_type text default 'text/markdown',
+  storage_ref text,
+  content_hash text,
+  size_bytes bigint default 0,
+  state text not null default 'draft'
+    check (state in ('draft', 'ready', 'archived', 'deleted')),
+  summary text default '',
+  provenance jsonb default '{}'::jsonb,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_art_workspace on public.artifacts(workspace_id);
+create index if not exists idx_art_task on public.artifacts(task_id);
+create index if not exists idx_art_state on public.artifacts(state);
+
+-- ============================================================
+-- 13. Sources
+-- ============================================================
+create table if not exists public.sources (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  task_id uuid references public.tasks(id) on delete set null,
+  run_id uuid references public.runs(id) on delete set null,
+  url text default '',
+  file_ref text default '',
+  title text default '',
+  author text default '',
+  retrieved_at timestamptz not null default now(),
+  excerpt text default '',
+  trust_label text not null default 'unverified'
+    check (trust_label in ('unverified', 'verified', 'trusted')),
+  sensitivity_label text not null default 'internal'
+    check (sensitivity_label in ('public', 'internal', 'confidential', 'restricted'))
+);
+
+create index if not exists idx_src_task on public.sources(task_id);
+
+-- ============================================================
+-- 14. Audit Events
+-- ============================================================
+create table if not exists public.audit_events (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  actor_id uuid references auth.users(id),
+  actor_type text not null default 'system'
+    check (actor_type in ('user', 'system', 'provider', 'tool')),
+  action text not null,
+  object_type text default '',
+  object_id text default '',
+  metadata jsonb default '{}'::jsonb,
+  correlation_id text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_ae_workspace on public.audit_events(workspace_id);
+create index if not exists idx_ae_created on public.audit_events(created_at desc);
+
+-- ============================================================
+-- 15. Tool Invocations
+-- ============================================================
+create table if not exists public.tool_invocations (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  task_id uuid references public.tasks(id) on delete set null,
+  run_id uuid references public.runs(id) on delete set null,
+  plan_step_id uuid references public.plan_steps(id) on delete set null,
+  tool_name text not null,
+  input_fingerprint text not null,
+  redacted_input jsonb default '{}'::jsonb,
+  redacted_output jsonb default '{}'::jsonb,
+  status text not null default 'pending'
+    check (status in ('pending', 'running', 'succeeded', 'failed', 'cancelled')),
+  usage jsonb default '{}'::jsonb,
+  error text,
+  approval_id uuid references public.approval_requests(id) on delete set null,
+  created_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+
+create index if not exists idx_ti_run on public.tool_invocations(run_id);
+
+-- ============================================================
+-- 16. Integration Connections
+-- ============================================================
+create table if not exists public.integration_connections (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  provider text not null,
+  scope_summary text default '',
+  connection_state text not null default 'disconnected'
+    check (connection_state in ('connected', 'disconnected', 'error', 'revoked')),
+  credential_ref text, -- server-side encrypted reference only
+  owner_id uuid references auth.users(id),
+  last_used_at timestamptz,
+  revoked_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_ic_workspace on public.integration_connections(workspace_id);
+
+-- ============================================================
+-- 17. Automations
+-- ============================================================
+create table if not exists public.automations (
+  id uuid primary key default uuid_generate_v4(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  project_id uuid references public.projects(id) on delete set null,
+  owner_id uuid references auth.users(id),
+  name text not null,
+  schedule_definition jsonb default '{}'::jsonb,
+  state text not null default 'disabled'
+    check (state in ('active', 'paused', 'failing', 'disabled')),
+  task_template jsonb default '{}'::jsonb,
+  idempotency_strategy text default 'skip',
+  max_runs integer default 10,
+  max_budget numeric(10,2) default 50.00,
+  max_time_seconds integer default 600,
+  approval_policy text not null default 'just_in_time'
+    check (approval_policy in ('none', 'plan_approval', 'just_in_time')),
+  next_run_at timestamptz,
+  last_run_at timestamptz,
+  failure_state text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_auto_workspace on public.automations(workspace_id);
+
+-- ============================================================
+-- Helper Functions
+--
+-- Defined AFTER workspace_memberships table exists so that
+-- LANGUAGE sql function bodies resolve correctly at creation
+-- time. Both functions are SECURITY DEFINER with explicit
+-- search_path = public to prevent search-path injection.
+-- ============================================================
 
 -- ── Helper: workspace membership check ──
 -- Returns true if the current auth user is a member of the workspace
@@ -62,16 +463,84 @@ as $$
 $$;
 
 -- ============================================================
--- 1. Profiles (extends auth.users)
+-- Bootstrap Function: Create Workspace with First Owner
+--
+-- Solves the circular authorization problem: RLS on
+-- workspace_memberships requires an existing admin to insert
+-- a membership, but a new workspace has no members yet.
+--
+-- This SECURITY DEFINER function atomically creates a workspace
+-- and its first owner membership for the calling authenticated
+-- user, bypassing RLS as the narrow bootstrap path.
+--
+-- Security properties:
+--   - SECURITY DEFINER with explicit search_path = public
+--   - Rejects anonymous callers (auth.uid() IS NULL check)
+--   - Granted ONLY to authenticated role (revoked from public/anon)
+--   - Idempotent via unique slug constraint + ON CONFLICT
+--   - Prevents slug hijacking by other users
 -- ============================================================
-create table if not exists public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
-  display_name text not null default '',
-  avatar_url text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+create or replace function public.create_workspace_with_owner(
+  p_name text,
+  p_slug text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_workspace_id uuid;
+  v_user_id uuid := auth.uid();
+begin
+  -- Reject anonymous calls
+  if v_user_id is null then
+    raise exception 'Authentication required to create a workspace';
+  end if;
 
+  -- Atomically create workspace (idempotent via unique slug)
+  insert into public.workspaces (name, slug, created_by)
+  values (p_name, p_slug, v_user_id)
+  on conflict (slug) do nothing
+  returning id into v_workspace_id;
+
+  -- If slug already existed, fetch the existing workspace
+  if v_workspace_id is null then
+    select w.id into v_workspace_id
+    from public.workspaces w
+    where w.slug = p_slug
+      and w.created_by = v_user_id;
+
+    -- If the workspace exists but was created by a different user, reject
+    if v_workspace_id is null then
+      raise exception 'Workspace slug already in use';
+    end if;
+  end if;
+
+  -- Create or reactivate the first owner membership (idempotent)
+  insert into public.workspace_memberships (workspace_id, user_id, role, status)
+  values (v_workspace_id, v_user_id, 'owner', 'active')
+  on conflict (workspace_id, user_id) do update
+    set role = 'owner',
+        status = 'active',
+        updated_at = now();
+
+  return v_workspace_id;
+end;
+$$;
+
+-- Grant execute ONLY to authenticated users (not anon, not public)
+revoke execute on function public.create_workspace_with_owner(text, text) from public, anon;
+grant execute on function public.create_workspace_with_owner(text, text) to authenticated;
+
+-- ============================================================
+-- Row-Level Security
+--
+-- Enabled after all tables and helper functions exist so that
+-- policies can safely reference has_workspace_role().
+-- ============================================================
+
+-- ── Profiles RLS ──
 alter table public.profiles enable row level security;
 
 create policy "profiles_self_read"
@@ -86,21 +555,7 @@ create policy "profiles_self_insert"
   on public.profiles for insert
   with check (auth.uid() = id);
 
--- ============================================================
--- 2. Workspaces
--- ============================================================
-create table if not exists public.workspaces (
-  id uuid primary key default uuid_generate_v4(),
-  name text not null,
-  slug text unique not null,
-  description text default '',
-  created_by uuid references auth.users(id),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_workspaces_slug on public.workspaces(slug);
-
+-- ── Workspaces RLS ──
 alter table public.workspaces enable row level security;
 
 create policy "workspaces_member_read"
@@ -119,25 +574,7 @@ create policy "workspaces_owner_delete"
   on public.workspaces for delete
   using (public.has_workspace_role(id, 'owner'));
 
--- ============================================================
--- 3. Workspace Memberships
--- ============================================================
-create table if not exists public.workspace_memberships (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  user_id uuid not null references auth.users(id) on delete cascade,
-  role text not null default 'member'
-    check (role in ('owner', 'admin', 'member', 'viewer')),
-  status text not null default 'active'
-    check (status in ('active', 'invited', 'removed')),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique(workspace_id, user_id)
-);
-
-create index if not exists idx_wm_workspace on public.workspace_memberships(workspace_id);
-create index if not exists idx_wm_user on public.workspace_memberships(user_id);
-
+-- ── Workspace Memberships RLS ──
 alter table public.workspace_memberships enable row level security;
 
 create policy "wm_member_read"
@@ -156,25 +593,7 @@ create policy "wm_owner_delete"
   on public.workspace_memberships for delete
   using (public.has_workspace_role(workspace_id, 'owner'));
 
--- ============================================================
--- 4. Projects
--- ============================================================
-create table if not exists public.projects (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  name text not null,
-  description text default '',
-  allowed_tools jsonb default '[]'::jsonb,
-  default_budget_limit numeric(10,2) default 100.00,
-  default_time_limit_seconds integer default 300,
-  owner_id uuid references auth.users(id),
-  archived boolean not null default false,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_projects_workspace on public.projects(workspace_id);
-
+-- ── Projects RLS ──
 alter table public.projects enable row level security;
 
 create policy "projects_member_read"
@@ -193,37 +612,7 @@ create policy "projects_admin_delete"
   on public.projects for delete
   using (public.has_workspace_role(workspace_id, 'admin'));
 
--- ============================================================
--- 5. Tasks
--- ============================================================
-create table if not exists public.tasks (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  project_id uuid references public.projects(id) on delete set null,
-  creator_id uuid references auth.users(id),
-  title text not null,
-  desired_outcome text default '',
-  instructions text default '',
-  status text not null default 'draft'
-    check (status in ('draft', 'planning', 'awaiting_plan_review', 'queued',
-                      'running', 'awaiting_approval', 'paused',
-                      'completed', 'failed', 'cancelled')),
-  priority text not null default 'Medium'
-    check (priority in ('Low', 'Medium', 'High', 'Critical')),
-  active_plan_version integer,
-  budget_limit numeric(10,2),
-  time_limit_seconds integer,
-  cancelled_at timestamptz,
-  cancellation_reason text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_tasks_workspace on public.tasks(workspace_id);
-create index if not exists idx_tasks_project on public.tasks(project_id);
-create index if not exists idx_tasks_status on public.tasks(status);
-create index if not exists idx_tasks_creator on public.tasks(creator_id);
-
+-- ── Tasks RLS ──
 alter table public.tasks enable row level security;
 
 create policy "tasks_member_read"
@@ -242,27 +631,7 @@ create policy "tasks_admin_delete"
   on public.tasks for delete
   using (public.has_workspace_role(workspace_id, 'admin'));
 
--- ============================================================
--- 6. Task Context Items
--- ============================================================
-create table if not exists public.task_context_items (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  task_id uuid not null references public.tasks(id) on delete cascade,
-  project_id uuid references public.projects(id) on delete set null,
-  type text not null default 'text'
-    check (type in ('text', 'file', 'url', 'note', 'connection_reference')),
-  display_name text not null,
-  storage_ref text,
-  provenance jsonb default '{}'::jsonb,
-  sensitivity_label text not null default 'internal'
-    check (sensitivity_label in ('public', 'internal', 'confidential', 'restricted')),
-  created_by uuid references auth.users(id),
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_tci_task on public.task_context_items(task_id);
-
+-- ── Task Context Items RLS ──
 alter table public.task_context_items enable row level security;
 
 create policy "tci_member_read"
@@ -281,28 +650,7 @@ create policy "tci_admin_delete"
   on public.task_context_items for delete
   using (public.has_workspace_role(workspace_id, 'admin'));
 
--- ============================================================
--- 7. Plans
--- ============================================================
-create table if not exists public.plans (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  task_id uuid not null references public.tasks(id) on delete cascade,
-  version integer not null default 1,
-  status text not null default 'draft'
-    check (status in ('draft', 'approved', 'superseded', 'rejected')),
-  author text not null default 'system',
-  summary text default '',
-  assumptions jsonb default '[]'::jsonb,
-  risks jsonb default '[]'::jsonb,
-  created_at timestamptz not null default now(),
-  approved_at timestamptz,
-  unique(task_id, version)
-);
-
-create index if not exists idx_plans_task on public.plans(task_id);
-create index if not exists idx_plans_workspace on public.plans(workspace_id);
-
+-- ── Plans RLS ──
 alter table public.plans enable row level security;
 
 create policy "plans_member_read"
@@ -317,36 +665,7 @@ create policy "plans_member_update"
   on public.plans for update
   using (public.has_workspace_role(workspace_id, 'member'));
 
--- ============================================================
--- 8. Plan Steps
--- ============================================================
-create table if not exists public.plan_steps (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  plan_id uuid not null references public.plans(id) on delete cascade,
-  task_id uuid not null references public.tasks(id) on delete cascade,
-  position integer not null default 0,
-  title text not null,
-  purpose text default '',
-  dependencies jsonb default '[]'::jsonb,
-  tool_class text default '',
-  input_summary text default '',
-  expected_output text default '',
-  risk_tier text not null default 'low'
-    check (risk_tier in ('low', 'moderate', 'high', 'critical')),
-  requires_approval boolean not null default false,
-  status text not null default 'pending'
-    check (status in ('pending', 'running', 'awaiting_approval',
-                      'completed', 'failed', 'skipped', 'cancelled')),
-  estimated_duration integer,
-  estimated_cost numeric(10,2),
-  retry_policy jsonb default '{"maxRetries": 0}'::jsonb,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_ps_plan on public.plan_steps(plan_id);
-create index if not exists idx_ps_task on public.plan_steps(task_id);
-
+-- ── Plan Steps RLS ──
 alter table public.plan_steps enable row level security;
 
 create policy "ps_member_read"
@@ -361,33 +680,7 @@ create policy "ps_member_update"
   on public.plan_steps for update
   using (public.has_workspace_role(workspace_id, 'member'));
 
--- ============================================================
--- 9. Runs
--- ============================================================
-create table if not exists public.runs (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  task_id uuid not null references public.tasks(id) on delete cascade,
-  plan_id uuid references public.plans(id) on delete set null,
-  status text not null default 'queued'
-    check (status in ('queued', 'active', 'succeeded', 'failed',
-                      'cancelled', 'timed_out')),
-  attempt_count integer not null default 1,
-  parent_run_id uuid references public.runs(id) on delete set null,
-  provider text default '',
-  tool_summary text default '',
-  started_at timestamptz,
-  ended_at timestamptz,
-  failure_classification text,
-  budget_used numeric(10,2) default 0,
-  time_used_ms bigint default 0,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_runs_task on public.runs(task_id);
-create index if not exists idx_runs_workspace on public.runs(workspace_id);
-create index if not exists idx_runs_status on public.runs(status);
-
+-- ── Runs RLS ──
 alter table public.runs enable row level security;
 
 create policy "runs_member_read"
@@ -402,26 +695,7 @@ create policy "runs_member_update"
   on public.runs for update
   using (public.has_workspace_role(workspace_id, 'member'));
 
--- ============================================================
--- 10. Run Events
--- ============================================================
-create table if not exists public.run_events (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  run_id uuid not null references public.runs(id) on delete cascade,
-  task_id uuid references public.tasks(id) on delete set null,
-  sequence integer not null default 0,
-  event text not null,
-  summary text default '',
-  metadata jsonb default '{}'::jsonb,
-  actor text not null default 'system'
-    check (actor in ('user', 'system', 'provider', 'tool')),
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_re_run on public.run_events(run_id);
-create index if not exists idx_re_task on public.run_events(task_id);
-
+-- ── Run Events RLS ──
 alter table public.run_events enable row level security;
 
 create policy "re_member_read"
@@ -432,38 +706,7 @@ create policy "re_member_insert"
   on public.run_events for insert
   with check (public.has_workspace_role(workspace_id, 'member'));
 
--- ============================================================
--- 11. Approval Requests
--- ============================================================
-create table if not exists public.approval_requests (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  project_id uuid references public.projects(id) on delete set null,
-  task_id uuid references public.tasks(id) on delete set null,
-  run_id uuid references public.runs(id) on delete set null,
-  plan_step_id uuid references public.plan_steps(id) on delete set null,
-  action_type text not null,
-  action_target text default '',
-  payload_hash text not null,
-  payload_preview jsonb default '{}'::jsonb,
-  risk_tier text not null default 'high'
-    check (risk_tier in ('low', 'moderate', 'high', 'critical')),
-  reason text default '',
-  requested_by uuid references auth.users(id),
-  status text not null default 'pending'
-    check (status in ('pending', 'approved', 'rejected', 'expired', 'cancelled', 'executed')),
-  expires_at timestamptz not null default (now() + interval '15 minutes'),
-  decided_at timestamptz,
-  decided_by uuid references auth.users(id),
-  decision_note text default '',
-  executed_result text,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_ar_workspace on public.approval_requests(workspace_id);
-create index if not exists idx_ar_status on public.approval_requests(status);
-create index if not exists idx_ar_task on public.approval_requests(task_id);
-
+-- ── Approval Requests RLS ──
 alter table public.approval_requests enable row level security;
 
 create policy "ar_member_read"
@@ -478,33 +721,7 @@ create policy "ar_member_update"
   on public.approval_requests for update
   using (public.has_workspace_role(workspace_id, 'member'));
 
--- ============================================================
--- 12. Artifacts
--- ============================================================
-create table if not exists public.artifacts (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  project_id uuid references public.projects(id) on delete set null,
-  task_id uuid references public.tasks(id) on delete set null,
-  run_id uuid references public.runs(id) on delete set null,
-  type text not null default 'document',
-  display_name text not null,
-  media_type text default 'text/markdown',
-  storage_ref text,
-  content_hash text,
-  size_bytes bigint default 0,
-  state text not null default 'draft'
-    check (state in ('draft', 'ready', 'archived', 'deleted')),
-  summary text default '',
-  provenance jsonb default '{}'::jsonb,
-  created_by uuid references auth.users(id),
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_art_workspace on public.artifacts(workspace_id);
-create index if not exists idx_art_task on public.artifacts(task_id);
-create index if not exists idx_art_state on public.artifacts(state);
-
+-- ── Artifacts RLS ──
 alter table public.artifacts enable row level security;
 
 create policy "art_member_read"
@@ -523,28 +740,7 @@ create policy "art_admin_delete"
   on public.artifacts for delete
   using (public.has_workspace_role(workspace_id, 'admin'));
 
--- ============================================================
--- 13. Sources
--- ============================================================
-create table if not exists public.sources (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  task_id uuid references public.tasks(id) on delete set null,
-  run_id uuid references public.runs(id) on delete set null,
-  url text default '',
-  file_ref text default '',
-  title text default '',
-  author text default '',
-  retrieved_at timestamptz not null default now(),
-  excerpt text default '',
-  trust_label text not null default 'unverified'
-    check (trust_label in ('unverified', 'verified', 'trusted')),
-  sensitivity_label text not null default 'internal'
-    check (sensitivity_label in ('public', 'internal', 'confidential', 'restricted'))
-);
-
-create index if not exists idx_src_task on public.sources(task_id);
-
+-- ── Sources RLS ──
 alter table public.sources enable row level security;
 
 create policy "src_member_read"
@@ -555,26 +751,7 @@ create policy "src_member_insert"
   on public.sources for insert
   with check (public.has_workspace_role(workspace_id, 'member'));
 
--- ============================================================
--- 14. Audit Events
--- ============================================================
-create table if not exists public.audit_events (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  actor_id uuid references auth.users(id),
-  actor_type text not null default 'system'
-    check (actor_type in ('user', 'system', 'provider', 'tool')),
-  action text not null,
-  object_type text default '',
-  object_id text default '',
-  metadata jsonb default '{}'::jsonb,
-  correlation_id text,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_ae_workspace on public.audit_events(workspace_id);
-create index if not exists idx_ae_created on public.audit_events(created_at desc);
-
+-- ── Audit Events RLS ──
 alter table public.audit_events enable row level security;
 
 create policy "ae_member_read"
@@ -585,30 +762,7 @@ create policy "ae_member_insert"
   on public.audit_events for insert
   with check (public.has_workspace_role(workspace_id, 'member'));
 
--- ============================================================
--- 15. Tool Invocations
--- ============================================================
-create table if not exists public.tool_invocations (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  task_id uuid references public.tasks(id) on delete set null,
-  run_id uuid references public.runs(id) on delete set null,
-  plan_step_id uuid references public.plan_steps(id) on delete set null,
-  tool_name text not null,
-  input_fingerprint text not null,
-  redacted_input jsonb default '{}'::jsonb,
-  redacted_output jsonb default '{}'::jsonb,
-  status text not null default 'pending'
-    check (status in ('pending', 'running', 'succeeded', 'failed', 'cancelled')),
-  usage jsonb default '{}'::jsonb,
-  error text,
-  approval_id uuid references public.approval_requests(id) on delete set null,
-  created_at timestamptz not null default now(),
-  completed_at timestamptz
-);
-
-create index if not exists idx_ti_run on public.tool_invocations(run_id);
-
+-- ── Tool Invocations RLS ──
 alter table public.tool_invocations enable row level security;
 
 create policy "ti_member_read"
@@ -623,25 +777,7 @@ create policy "ti_member_update"
   on public.tool_invocations for update
   using (public.has_workspace_role(workspace_id, 'member'));
 
--- ============================================================
--- 16. Integration Connections
--- ============================================================
-create table if not exists public.integration_connections (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  provider text not null,
-  scope_summary text default '',
-  connection_state text not null default 'disconnected'
-    check (connection_state in ('connected', 'disconnected', 'error', 'revoked')),
-  credential_ref text, -- server-side encrypted reference only
-  owner_id uuid references auth.users(id),
-  last_used_at timestamptz,
-  revoked_at timestamptz,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_ic_workspace on public.integration_connections(workspace_id);
-
+-- ── Integration Connections RLS ──
 alter table public.integration_connections enable row level security;
 
 create policy "ic_member_read"
@@ -660,34 +796,7 @@ create policy "ic_admin_delete"
   on public.integration_connections for delete
   using (public.has_workspace_role(workspace_id, 'owner'));
 
--- ============================================================
--- 17. Automations
--- ============================================================
-create table if not exists public.automations (
-  id uuid primary key default uuid_generate_v4(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  project_id uuid references public.projects(id) on delete set null,
-  owner_id uuid references auth.users(id),
-  name text not null,
-  schedule_definition jsonb default '{}'::jsonb,
-  state text not null default 'disabled'
-    check (state in ('active', 'paused', 'failing', 'disabled')),
-  task_template jsonb default '{}'::jsonb,
-  idempotency_strategy text default 'skip',
-  max_runs integer default 10,
-  max_budget numeric(10,2) default 50.00,
-  max_time_seconds integer default 600,
-  approval_policy text not null default 'just_in_time'
-    check (approval_policy in ('none', 'plan_approval', 'just_in_time')),
-  next_run_at timestamptz,
-  last_run_at timestamptz,
-  failure_state text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_auto_workspace on public.automations(workspace_id);
-
+-- ── Automations RLS ──
 alter table public.automations enable row level security;
 
 create policy "auto_member_read"
@@ -707,9 +816,10 @@ create policy "auto_admin_delete"
   using (public.has_workspace_role(workspace_id, 'admin'));
 
 -- ============================================================
--- 18. Private Storage Bucket for Artifacts
--- ============================================================
+-- Private Storage Bucket for Artifacts
+--
 -- Only private bucket — no public access, no anonymous downloads.
+-- ============================================================
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'artifacts',
@@ -764,8 +874,12 @@ create policy "artifacts_storage_admin_delete"
   );
 
 -- ============================================================
--- 19. Updated_at Triggers
+-- Triggers
+--
+-- Defined last so that all tables and functions exist.
 -- ============================================================
+
+-- ── Updated_at trigger function ──
 create or replace function public.handle_updated_at()
 returns trigger
 language plpgsql
@@ -800,9 +914,7 @@ create trigger set_updated_at_automations
   before update on public.automations
   for each row execute function public.handle_updated_at();
 
--- ============================================================
--- 20. Auto-create profile on user signup
--- ============================================================
+-- ── Auto-create profile on user signup ──
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
