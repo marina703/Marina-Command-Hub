@@ -52,6 +52,8 @@ const {
 } = require("./server-policy");
 const { effectivePermission } = require("./agent");
 
+// ── Supabase auth & workspace layer (server-only) ──
+const supabaseRepo = require("./server-supabase");
 
 
 const PORT = process.env.PORT || 3000;
@@ -394,8 +396,195 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// ── Auth helpers ─────────────────────────────────────────────
+
+/**
+ * Extract the bearer token from the Authorization header.
+ * Returns null if not present or malformed.
+ */
+function extractBearerToken(req) {
+  const auth = req.headers["authorization"] || "";
+  if (!auth.startsWith("Bearer ")) return null;
+  return auth.slice(7).trim() || null;
+}
+
+/**
+ * Verify the authenticated user from the request.
+ * Returns { ok, user, error } — never trusts client-supplied IDs.
+ */
+async function requireAuth(req) {
+  const token = extractBearerToken(req);
+  if (!token) return { ok: false, error: "Authorization header required" };
+  return supabaseRepo.verifySession(token);
+}
+
+/**
+ * Verify the authenticated user AND workspace membership.
+ * Returns { ok, user, role, error }.
+ */
+async function requireWorkspaceAuth(req, workspaceId) {
+  const auth = await requireAuth(req);
+  if (!auth.ok) return auth;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Workspace ID required", status: 400 };
+  }
+
+  const membership = await supabaseRepo.verifyWorkspaceMembership(
+    auth.user.id,
+    workspaceId,
+  );
+  if (!membership.ok) {
+    return { ok: false, error: "Not a member of this workspace", status: 403 };
+  }
+
+  return { ok: true, user: auth.user, role: membership.role };
+}
+
 async function handleRequest(req, res) {
   const url = new URL(req.url, "http://localhost");
+
+  /* ── Auth: session verification ── */
+  if (url.pathname === "/api/auth/session" && req.method === "GET") {
+    const auth = await requireAuth(req);
+    if (!auth.ok) {
+      return sendJson(res, 401, { ok: false, message: auth.error });
+    }
+    // Return sanitized user info — never expose tokens or internal IDs
+    return sendJson(res, 200, {
+      ok: true,
+      user: {
+        id: auth.user.id,
+        email: auth.user.email,
+        createdAt: auth.user.created_at,
+      },
+    });
+  }
+
+  /* ── Auth: Supabase configuration status (browser-safe) ── */
+  if (url.pathname === "/api/auth/status" && req.method === "GET") {
+    const status = supabaseRepo.getSupabaseStatus();
+    // Only expose browser-safe fields — never the service key
+    return sendJson(res, 200, {
+      ok: true,
+      configured: status.configured,
+      url: status.url,
+    });
+  }
+
+  /* ── Workspaces: list for authenticated user ── */
+  if (url.pathname === "/api/workspaces" && req.method === "GET") {
+    const auth = await requireAuth(req);
+    if (!auth.ok) {
+      return sendJson(res, 401, { ok: false, message: auth.error });
+    }
+    const result = await supabaseRepo.getUserWorkspaces(auth.user.id);
+    if (!result.ok) {
+      return sendJson(res, 500, { ok: false, message: result.error });
+    }
+    return sendJson(res, 200, { ok: true, workspaces: result.workspaces });
+  }
+
+  /* ── Artifacts: upload (authenticated + workspace member) ── */
+  if (url.pathname === "/api/artifacts/upload" && req.method === "POST") {
+    const body = await readJsonBody(req);
+    const workspaceId = body.workspaceId;
+    const authResult = await requireWorkspaceAuth(req, workspaceId);
+    if (!authResult.ok) {
+      return sendJson(res, authResult.status || 401, {
+        ok: false,
+        message: authResult.error,
+      });
+    }
+
+    const { displayName, mediaType, content, taskId, runId, type } = body;
+    if (!displayName || !content) {
+      return sendJson(res, 400, {
+        ok: false,
+        message: "displayName and content are required.",
+      });
+    }
+
+    const contentBytes = Buffer.byteLength(
+      typeof content === "string" ? content : JSON.stringify(content),
+      "utf8",
+    );
+
+    // Create artifact record
+    const artifactResult = await supabaseRepo.createArtifactInDb({
+      workspaceId,
+      taskId: taskId || null,
+      runId: runId || null,
+      type: type || "document",
+      displayName,
+      mediaType: mediaType || "text/markdown",
+      sizeBytes: contentBytes,
+      contentHash: "",
+      summary: "",
+      provenance: { uploadedBy: authResult.user.id },
+    });
+
+    if (!artifactResult.ok) {
+      return sendJson(res, 500, {
+        ok: false,
+        message: artifactResult.message,
+      });
+    }
+
+    // Upload to storage
+    const safeFilename = displayName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const uploadResult = await supabaseRepo.uploadArtifactFile(
+      workspaceId,
+      artifactResult.artifact.id,
+      safeFilename,
+      content,
+      mediaType || "text/markdown",
+      contentBytes,
+    );
+
+    if (!uploadResult.ok) {
+      return sendJson(res, 400, { ok: false, message: uploadResult.message });
+    }
+
+    return sendJson(res, 200, {
+      ok: true,
+      artifact: artifactResult.artifact,
+      path: uploadResult.path,
+    });
+  }
+
+  /* ── Artifacts: download signed URL (authenticated + workspace member) ── */
+  if (url.pathname === "/api/artifacts/download" && req.method === "POST") {
+    const body = await readJsonBody(req);
+    const { workspaceId, artifactId, filename } = body;
+    const authResult = await requireWorkspaceAuth(req, workspaceId);
+    if (!authResult.ok) {
+      return sendJson(res, authResult.status || 401, {
+        ok: false,
+        message: authResult.error,
+      });
+    }
+
+    if (!artifactId || !filename) {
+      return sendJson(res, 400, {
+        ok: false,
+        message: "artifactId and filename are required.",
+      });
+    }
+
+    const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const urlResult = await supabaseRepo.getArtifactSignedUrl(
+      workspaceId,
+      artifactId,
+      safeFilename,
+    );
+
+    if (!urlResult.ok) {
+      return sendJson(res, 404, { ok: false, message: urlResult.message });
+    }
+
+    return sendJson(res, 200, { ok: true, url: urlResult.url });
+  }
 
   if (url.pathname === "/api/dashboard" && req.method === "POST") {
     return handleDashboardMutation(req, res);

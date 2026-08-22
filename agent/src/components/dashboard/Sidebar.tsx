@@ -12,9 +12,11 @@ import {
   ShieldCheck,
   Settings2,
   Wrench,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DashboardState } from "@/types";
+import type { User } from "@supabase/supabase-js";
 
 export type ViewId =
   | "dashboard"
@@ -34,7 +36,9 @@ export interface SidebarProps {
   activeView: ViewId;
   onNavigate: (view: ViewId) => void;
   onLock: () => void;
+  onSignOut?: () => void;
   data: DashboardState | null;
+  user?: User | null;
 }
 
 interface NavItem {
@@ -101,7 +105,7 @@ function QuickStat({
   );
 }
 
-export function Sidebar({ activeView, onNavigate, onLock, data }: SidebarProps) {
+export function Sidebar({ activeView, onNavigate, onLock, onSignOut, data, user }: SidebarProps) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     Workspace: true,
     Websites: true,
@@ -199,22 +203,49 @@ export function Sidebar({ activeView, onNavigate, onLock, data }: SidebarProps) 
       </div>
 
       {/* Footer */}
-      <div className="mt-auto flex items-center gap-2 border-t border-border-muted px-1 pt-2">
-        <div className="grid h-6 w-6 place-items-center rounded-full border border-accent-secondary/45 bg-gradient-to-br from-accent-secondary/20 to-accent-primary/20 text-[0.75rem] font-bold shadow-glow-secondary">
-          M
+      <div className="mt-auto flex flex-col gap-2 border-t border-border-muted px-1 pt-2">
+        {/* User info */}
+        {user && (
+          <div className="flex items-center gap-2 rounded-lg bg-white/2 px-2 py-1.5">
+            <div className="grid h-6 w-6 place-items-center rounded-full border border-accent-secondary/45 bg-gradient-to-br from-accent-secondary/20 to-accent-primary/20 text-[0.7rem] font-bold shadow-glow-secondary">
+              {(user.email?.[0] || "U").toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[0.72rem] font-medium text-text-primary">
+                {user.email}
+              </p>
+            </div>
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <div className="grid h-6 w-6 place-items-center rounded-full border border-accent-secondary/45 bg-gradient-to-br from-accent-secondary/20 to-accent-primary/20 text-[0.75rem] font-bold shadow-glow-secondary">
+            M
+          </div>
+          <div className="flex flex-col">
+            <strong className="text-[0.75rem] text-text-primary">Command Hub Online</strong>
+            <small className="text-[0.68rem] text-text-secondary">Zero window-switching</small>
+          </div>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              onClick={onLock}
+              title="Lock Hub"
+              aria-label="Lock Hub"
+              className="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-white/5 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/60"
+            >
+              <Lock className="h-4 w-4" />
+            </button>
+            {onSignOut && (
+              <button
+                onClick={onSignOut}
+                title="Sign Out"
+                aria-label="Sign Out"
+                className="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-status-error/10 hover:text-status-error focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/60"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex flex-col">
-          <strong className="text-[0.75rem] text-text-primary">Command Hub Online</strong>
-          <small className="text-[0.68rem] text-text-secondary">Zero window-switching</small>
-        </div>
-        <button
-          onClick={onLock}
-          title="Lock Hub"
-          aria-label="Lock Hub"
-          className="ml-auto rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-white/5 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/60"
-        >
-          <Lock className="h-4 w-4" />
-        </button>
       </div>
     </aside>
   );

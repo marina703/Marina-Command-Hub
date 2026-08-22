@@ -78,6 +78,101 @@ function getSupabaseStatus() {
   };
 }
 
+// ── Auth Verification ────────────────────────────────────────
+
+/**
+ * Verify a bearer token and return the authenticated user.
+ *
+ * SECURITY: This derives the user identity server-side from the JWT.
+ * It never trusts a client-supplied userId.
+ *
+ * @param {string} bearerToken - The Authorization: Bearer <token> value
+ * @returns {{ ok: boolean, user?: object, error?: string }}
+ */
+async function verifySession(bearerToken) {
+  if (!isConfigured) return { ok: false, error: "Supabase not configured" };
+  if (!bearerToken) return { ok: false, error: "No bearer token provided" };
+
+  const client = getServiceClient();
+  if (!client) return { ok: false, error: "Service client unavailable" };
+
+  // Use the service-role client to verify the JWT and get the user
+  const { data: { user }, error } = await client.auth.getUser(bearerToken);
+
+  if (error || !user) {
+    return { ok: false, error: error?.message || "Invalid or expired token" };
+  }
+
+  return { ok: true, user };
+}
+
+// ── Workspace Authorization ──────────────────────────────────
+
+/**
+ * Get all workspaces the authenticated user is a member of.
+ *
+ * SECURITY: Uses RLS-aware query — the service client queries
+ * workspace_memberships filtered by the authenticated user ID.
+ *
+ * @param {string} userId - The verified user ID from verifySession
+ * @returns {{ ok: boolean, workspaces?: Array, error?: string }}
+ */
+async function getUserWorkspaces(userId) {
+  if (!isConfigured) return { ok: false, error: "Supabase not configured" };
+  if (!userId) return { ok: false, error: "User ID required" };
+
+  const client = getServiceClient();
+  if (!client) return { ok: false, error: "Service client unavailable" };
+
+  const { data, error } = await client
+    .from("workspace_memberships")
+    .select("workspace_id, role, workspaces!inner(id, name, slug)")
+    .eq("user_id", userId);
+
+  if (error) return { ok: false, error: error.message };
+
+  const workspaces = (data || []).map((row) => ({
+    id: row.workspaces.id,
+    name: row.workspaces.name,
+    slug: row.workspaces.slug,
+    role: row.role,
+  }));
+
+  return { ok: true, workspaces };
+}
+
+/**
+ * Verify that a user is a member of a specific workspace.
+ *
+ * SECURITY: This is the server-side authorization check. It must be
+ * called on every workspace-scoped API request. Never trust a
+ * client-supplied workspaceId as proof of membership.
+ *
+ * @param {string} userId - The verified user ID
+ * @param {string} workspaceId - The workspace ID to check
+ * @returns {{ ok: boolean, role?: string, error?: string }}
+ */
+async function verifyWorkspaceMembership(userId, workspaceId) {
+  if (!isConfigured) return { ok: false, error: "Supabase not configured" };
+  if (!userId) return { ok: false, error: "User ID required" };
+  if (!workspaceId) return { ok: false, error: "Workspace ID required" };
+
+  const client = getServiceClient();
+  if (!client) return { ok: false, error: "Service client unavailable" };
+
+  const { data, error } = await client
+    .from("workspace_memberships")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "Not a member of this workspace" };
+
+  return { ok: true, role: data.role };
+}
+
 // ── Repository functions ──
 
 async function createTaskInDb(task) {
@@ -230,9 +325,49 @@ async function createArtifactInDb(artifact) {
   return { ok: true, artifact: data };
 }
 
-async function uploadArtifactFile(workspaceId, artifactId, filename, content, contentType) {
+// ── Artifact Storage ─────────────────────────────────────────
+
+const ARTIFACT_MAX_BYTES = 50 * 1024 * 1024; // 50 MB
+const ALLOWED_MIME_TYPES = new Set([
+  "text/markdown",
+  "text/plain",
+  "text/csv",
+  "application/json",
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/svg+xml",
+  "image/webp",
+  "application/zip",
+]);
+
+/**
+ * Upload an artifact file to the private storage bucket.
+ *
+ * SECURITY: Validates file size and MIME type before upload.
+ * Uses the path convention {workspace_id}/{artifact_id}/{filename}.
+ *
+ * @param {string} workspaceId
+ * @param {string} artifactId
+ * @param {string} filename
+ * @param {Buffer|string} content
+ * @param {string} contentType
+ * @param {number} sizeBytes - File size in bytes (must be validated by caller)
+ */
+async function uploadArtifactFile(workspaceId, artifactId, filename, content, contentType, sizeBytes) {
   const client = getServiceClient();
   if (!client) return { ok: false, message: "Supabase not configured" };
+
+  // Validate size
+  if (sizeBytes && sizeBytes > ARTIFACT_MAX_BYTES) {
+    return { ok: false, message: `File exceeds maximum size of ${ARTIFACT_MAX_BYTES / (1024 * 1024)} MB` };
+  }
+
+  // Validate MIME type
+  if (contentType && !ALLOWED_MIME_TYPES.has(contentType)) {
+    return { ok: false, message: `MIME type "${contentType}" is not allowed` };
+  }
+
   const filePath = `${workspaceId}/${artifactId}/${filename}`;
   const { data, error } = await client.storage
     .from("artifacts")
@@ -244,6 +379,12 @@ async function uploadArtifactFile(workspaceId, artifactId, filename, content, co
   return { ok: true, path: data?.path || filePath };
 }
 
+/**
+ * Generate a short-lived signed URL for an artifact download.
+ *
+ * SECURITY: Never generates public URLs. The signed URL expires
+ * after the specified duration (default 1 hour).
+ */
 async function getArtifactSignedUrl(workspaceId, artifactId, filename, expiresIn = 3600) {
   const client = getServiceClient();
   if (!client) return { ok: false, message: "Supabase not configured" };
@@ -301,11 +442,53 @@ async function createWorkspace({ userId, name, slug }) {
   return { ok: true, workspaceId: data };
 }
 
+/**
+ * Create a workspace for an authenticated user.
+ *
+ * SECURITY: This is the server-only service seam. It:
+ * 1. Verifies the authenticated principal via bearer token
+ * 2. Validates and normalizes workspace name/slug
+ * 3. Invokes the service-role-only create_workspace RPC
+ * 4. Never exposes service credentials or allows browser-provided owner IDs
+ *
+ * NOT wired to public self-service UI until controlled test phase is approved.
+ *
+ * @param {string} bearerToken - The Authorization: Bearer <token>
+ * @param {string} name - Workspace display name
+ * @param {string} slug - URL-safe workspace slug
+ */
+async function createWorkspaceForAuthenticatedUser(bearerToken, name, slug) {
+  // Step 1: Verify the authenticated principal
+  const authResult = await verifySession(bearerToken);
+  if (!authResult.ok) return { ok: false, message: authResult.error };
+
+  // Step 2: Validate and normalize
+  const normalizedName = (name || "").trim();
+  const normalizedSlug = (slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
+
+  if (!normalizedName || normalizedName.length < 2) {
+    return { ok: false, message: "Workspace name must be at least 2 characters" };
+  }
+  if (!normalizedSlug || normalizedSlug.length < 2) {
+    return { ok: false, message: "Workspace slug must be at least 2 characters" };
+  }
+
+  // Step 3: Create workspace with verified user ID
+  return createWorkspace({
+    userId: authResult.user.id,
+    name: normalizedName,
+    slug: normalizedSlug,
+  });
+}
+
 module.exports = {
   isConfigured,
   getSupabaseStatus,
   getServiceClient,
   getAnonClient,
+  verifySession,
+  getUserWorkspaces,
+  verifyWorkspaceMembership,
   createTaskInDb,
   listTasksInDb,
   createPlanInDb,
@@ -317,4 +500,7 @@ module.exports = {
   getArtifactSignedUrl,
   createAuditEventInDb,
   createWorkspace,
+  createWorkspaceForAuthenticatedUser,
+  ARTIFACT_MAX_BYTES,
+  ALLOWED_MIME_TYPES,
 };

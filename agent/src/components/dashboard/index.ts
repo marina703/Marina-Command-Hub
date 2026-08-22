@@ -21,3 +21,4 @@ export { ApprovalInbox } from "./ApprovalInbox";
 export { SecurityPanel } from "./SecurityPanel";
 export { TaskDetail } from "./TaskDetail";
 export { IntegrationsPanel } from "./IntegrationsPanel";
+export { LoginPage } from "./LoginPage";

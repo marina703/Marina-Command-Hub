@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useDashboard } from "@/hooks/useDashboard";
+import { useAuth } from "@/hooks/useAuth";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { getConfig, runAutonomousLoop, sendChat } from "@/lib/api";
 import type { LLMConfig, LogEntry, PresetConfig } from "@/types";
 
@@ -28,6 +30,7 @@ import {
 } from "@/components/dashboard";
 import type { ViewId } from "@/components/dashboard/Sidebar";
 import type { ChatMessage } from "@/components/dashboard/AssistantConsole";
+import { LoginPage } from "@/components/dashboard/LoginPage";
 import { ErrorBoundary, SkeletonGrid } from "@/components/ui";
 
 import { loadPresets, savePresets } from "@/components/dashboard/ControlPanel";
@@ -57,6 +60,12 @@ function toLogEntries(raw: string[]): LogEntry[] {
 }
 
 export default function App() {
+  // Auth state — gates the entire Command Hub
+  const auth = useAuth();
+  // Workspace state — available for future workspace selector UI
+  const _workspace = useWorkspace(auth.session);
+  void _workspace; // Used by workspace hook for session-based fetching
+
   const { data, loading, error, refresh } = useDashboard();
   const [activeView, setActiveView] = useState<ViewId>("dashboard");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -221,6 +230,27 @@ export default function App() {
     }));
   }, [data]);
 
+  // Auth gate: show login page when not authenticated.
+  // When Supabase is not configured, LoginPage shows a "configuration required" state.
+  if (!auth.loading && !auth.user) {
+    return <LoginPage auth={auth} />;
+  }
+
+  // Loading state while checking session
+  if (auth.loading) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-surface-1 p-6">
+        <div className="flex flex-col items-center gap-3">
+          <div className="grid h-12 w-12 place-items-center rounded-2xl border border-accent-primary/50 bg-gradient-to-br from-accent-primary/20 to-accent-secondary/20 font-extrabold text-accent-primary shadow-glow-primary">
+            M
+          </div>
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent-primary border-t-transparent" />
+          <p className="text-sm text-text-secondary">Restoring session…</p>
+        </div>
+      </div>
+    );
+  }
+
   // Lock screen gate.
   if (locked) {
     return (
@@ -252,7 +282,9 @@ export default function App() {
             activeView={activeView}
             onNavigate={setActiveView}
             onLock={handleLock}
+            onSignOut={auth.signOut}
             data={data}
+            user={auth.user}
           />
         </ErrorBoundary>
 
