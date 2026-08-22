@@ -5,12 +5,14 @@
   "scripts": {
     "start": "node agent.js",
     "listen": "node listener.js",
-    "test": "node smoke-test.js",
+    "test": "node --test \"test/*.test.js\"",
+    "smoke": "node smoke-test.js",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "@tanstack/react-virtual": "^3.14.10",
     "axios": "^1.6.0",
     "clsx": "^2.1.1",
