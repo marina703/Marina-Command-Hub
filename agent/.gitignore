@@ -2,6 +2,9 @@
 *.log
 logs/
 
+# Local runtime state (superseded by Supabase; regenerated on server start)
+dashboard-state.json
+
 # Runtime-generated reports (playbook outputs)
 tmp/
 
