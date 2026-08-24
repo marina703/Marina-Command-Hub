@@ -9,7 +9,8 @@
     "smoke": "node smoke-test.js",
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "autopilot": "MARINA_AUTOPILOT=1 node run-autopilot.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
