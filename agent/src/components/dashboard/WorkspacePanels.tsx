@@ -28,7 +28,6 @@ import type { PlaybookResponse, SystemMetrics } from "@/types";
 import { PlaybookBar } from "./PlaybookBar";
 import { Panel, type PanelItem } from "./Panel";
 
-
 /* ============================================================
    Workspace Panels
    Composes the PlaybookBar with a responsive grid of panels
@@ -48,39 +47,65 @@ const ONE_CLICK_TOOLS: Array<{ id: string; label: string; tooltip: string }> = [
   {
     id: "market-position",
     label: "Market Position Analyzer",
-    tooltip: "Analyze the market position of the Marina AI portfolio and identify gaps vs competitors.",
+    tooltip:
+      "Analyze the market position of the Marina AI portfolio and identify gaps vs competitors.",
   },
   {
     id: "competitor-snapshot",
     label: "Competitor Snapshot",
-    tooltip: "Generate a competitor snapshot with strengths, weaknesses, and exploitable gaps.",
+    tooltip:
+      "Generate a competitor snapshot with strengths, weaknesses, and exploitable gaps.",
   },
   {
     id: "audience-persona",
     label: "Audience Persona Builder",
-    tooltip: "Build detailed audience personas with demographics, goals, pain points, and hooks.",
+    tooltip:
+      "Build detailed audience personas with demographics, goals, pain points, and hooks.",
   },
   {
     id: "trend-pulse",
     label: "Trend Pulse Scan",
-    tooltip: "Scan current trends and surface opportunities with recommended actions.",
+    tooltip:
+      "Scan current trends and surface opportunities with recommended actions.",
   },
   {
     id: "offer-angle",
     label: "Offer Angle Generator",
-    tooltip: "Generate 5 offer angles with core promise, target segment, and hook.",
+    tooltip:
+      "Generate 5 offer angles with core promise, target segment, and hook.",
   },
   {
     id: "funnel-weakpoint",
     label: "Funnel Weak-Point Detector",
-    tooltip: "Analyze the sales funnel and identify weak points at each stage with fixes.",
+    tooltip:
+      "Analyze the sales funnel and identify weak points at each stage with fixes.",
   },
+];
+
+/** Step-flow labels cycled under a One-Click Tool card while it runs. */
+const RUN_STEPS = [
+  "Step 1/3 · Gathering context",
+  "Step 2/3 · Analyzing",
+  "Step 3/3 · Drafting report",
 ];
 
 export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
   const [selectedPlaybook, setSelectedPlaybook] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [runningPlaybook, setRunningPlaybook] = useState<string | null>(null);
+  const [runStepIndex, setRunStepIndex] = useState(0);
+
+  // Cycle the step-flow label while a tool is running.
+  useEffect(() => {
+    if (!runningPlaybook) {
+      setRunStepIndex(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setRunStepIndex((prev) => (prev + 1) % RUN_STEPS.length);
+    }, 1100);
+    return () => clearInterval(interval);
+  }, [runningPlaybook]);
 
   // Real system-action state (loaded from /api/system/state)
   const [tempCount, setTempCount] = useState<number | null>(null);
@@ -153,7 +178,6 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
     },
     [onRefresh, loadMetrics],
   );
-
 
   /** Clear generated tmp/*.md reports via the real backend. */
   const handleClearTemp = async () => {
@@ -267,7 +291,6 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
     },
   ];
 
-
   const operationsItems: PanelItem[] = [
     {
       id: "ops-1",
@@ -275,7 +298,11 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
         tempCount !== null && tempCount > 0
           ? `Clear temp files (${tempCount})`
           : "Clear temp files",
-      status: tempCleared ? "Cleared" : tempCount ? `${tempCount} files` : "Idle",
+      status: tempCleared
+        ? "Cleared"
+        : tempCount
+          ? `${tempCount} files`
+          : "Idle",
       statusTone: tempCleared ? "success" : "neutral",
       action: (
         <Button
@@ -325,7 +352,9 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
   const systemItems: PanelItem[] = [
     {
       id: "sys-1",
-      label: optimizeSummary ? `Optimized (${optimizeSummary})` : "Optimize workspace",
+      label: optimizeSummary
+        ? `Optimized (${optimizeSummary})`
+        : "Optimize workspace",
       status: optimized ? "Optimized" : "Idle",
       statusTone: optimized ? "success" : "neutral",
       action: (
@@ -382,6 +411,7 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
     return {
       id: tool.id,
       label: tool.label,
+      subLabel: isRunning ? RUN_STEPS[runStepIndex] : undefined,
       status,
       statusTone,
       action: (
@@ -413,13 +443,10 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
     };
   });
 
-
-
   return (
     <div className="flex flex-col gap-4">
       <PlaybookBar
         welcome="Rapid Fire"
-
         selected={selectedPlaybook ?? undefined}
         onSelect={setSelectedPlaybook}
         onRun={handleRun}
@@ -456,7 +483,6 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
           progressLabel={running ? "Running…" : "Idle"}
           className="scroll-mt-24"
         />
-
       </div>
 
       {/* Status strip */}
