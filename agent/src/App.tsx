@@ -28,9 +28,11 @@ import {
   SecurityPanel,
   IntegrationsPanel,
   OperationsShelf,
+  TaskDetail,
 } from "@/components/dashboard";
 import type { ViewId } from "@/components/dashboard/Sidebar";
 import type { ChatMessage } from "@/components/dashboard/AssistantConsole";
+import type { TaskItem } from "@/types";
 import { LoginPage } from "@/components/dashboard/LoginPage";
 import { ErrorBoundary, SkeletonGrid } from "@/components/ui";
 
@@ -69,6 +71,7 @@ export default function App() {
 
   const { data, loading, error, refresh } = useDashboard();
   const [activeView, setActiveView] = useState<ViewId>("dashboard");
+  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [locked, setLocked] = useState(false);
@@ -428,12 +431,21 @@ export default function App() {
 
           {activeView === "tasks" && (
             <ErrorBoundary label="Task board">
-              <TaskBoard
-                tasks={data?.tasks ?? []}
-                completed={data?.completedHistory ?? []}
-                loading={loading}
-                onRefresh={refresh}
-              />
+              {selectedTask ? (
+                <TaskDetail
+                  task={selectedTask}
+                  onBack={() => setSelectedTask(null)}
+                  onRefresh={refresh}
+                />
+              ) : (
+                <TaskBoard
+                  tasks={data?.tasks ?? []}
+                  completed={data?.completedHistory ?? []}
+                  loading={loading}
+                  onRefresh={refresh}
+                  onSelectTask={setSelectedTask}
+                />
+              )}
             </ErrorBoundary>
           )}
 

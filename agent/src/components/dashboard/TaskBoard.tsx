@@ -10,11 +10,13 @@ export interface TaskBoardProps {
   completed: CompletedTask[];
   loading?: boolean;
   onRefresh: () => void;
+  /** Opens the full plan/run/artifact detail view for a task. */
+  onSelectTask?: (task: TaskItem) => void;
 }
 
 /** Mission Tasks & Work History board. */
 
-export function TaskBoard({ tasks, completed, loading, onRefresh }: TaskBoardProps) {
+export function TaskBoard({ tasks, completed, loading, onRefresh, onSelectTask }: TaskBoardProps) {
   const [title, setTitle] = useState("");
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -86,9 +88,19 @@ export function TaskBoard({ tasks, completed, loading, onRefresh }: TaskBoardPro
                     className="flex items-center justify-between gap-2 rounded-xl border border-border-muted bg-white/2 p-3"
                   >
                     <div className="min-w-0">
-                      <strong className="block truncate text-sm text-text-primary">
-                        {task.title}
-                      </strong>
+                      {onSelectTask ? (
+                        <button
+                          type="button"
+                          onClick={() => onSelectTask(task)}
+                          className="block truncate text-left text-sm font-bold text-text-primary hover:text-accent-primary hover:underline"
+                        >
+                          {task.title}
+                        </button>
+                      ) : (
+                        <strong className="block truncate text-sm text-text-primary">
+                          {task.title}
+                        </strong>
+                      )}
                       <small className="text-xs text-text-secondary">
                         {task.owner} • {task.priority} • {task.status}
                       </small>
