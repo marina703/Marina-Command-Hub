@@ -52,7 +52,8 @@ function toLogEntries(raw: string[]): LogEntry[] {
     let level: LogEntry["level"] = "info";
     if (lower.includes("error") || lower.includes("fail")) level = "error";
     else if (lower.includes("warn")) level = "warning";
-    else if (lower.includes("success") || lower.includes("complete")) level = "success";
+    else if (lower.includes("success") || lower.includes("complete"))
+      level = "success";
     return {
       id: `log-${i}-${Date.now()}`,
       level,
@@ -213,7 +214,10 @@ export default function App() {
   const handleToggleStream = useCallback(() => setStreaming((s) => !s), []);
   const handleClearLogs = useCallback(() => setLogs([]), []);
 
-  const online = useMemo(() => data?.status === "online" || data?.status === "ok", [data]);
+  const online = useMemo(
+    () => data?.status === "online" || data?.status === "ok",
+    [data],
+  );
 
   // Build model runs from tasks for the run history table.
   const runs = useMemo(() => {
@@ -229,7 +233,8 @@ export default function App() {
             ? "failed"
             : "queued") as "queued" | "running" | "completed" | "failed",
       progress: t.progress,
-      priority: (t.priority as "Low" | "Medium" | "High" | "Critical") ?? "Medium",
+      priority:
+        (t.priority as "Low" | "Medium" | "High" | "Critical") ?? "Medium",
       updatedAt: t.updatedAt,
     }));
   }, [data]);
@@ -263,7 +268,9 @@ export default function App() {
           <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl border border-accent-primary/50 bg-gradient-to-br from-accent-primary/20 to-accent-secondary/20 font-extrabold text-accent-primary shadow-glow-primary">
             M
           </div>
-          <h1 className="mb-1 text-lg font-bold text-text-primary">Command Hub Locked</h1>
+          <h1 className="mb-1 text-lg font-bold text-text-primary">
+            Command Hub Locked
+          </h1>
           <p className="mb-5 text-sm text-text-secondary">
             The workspace is paused. Unlock to resume autonomous operations.
           </p>
@@ -343,54 +350,60 @@ export default function App() {
               </div>
 
               <div className="grid gap-4 lg:grid-cols-3">
-              <div className="flex flex-col gap-4 lg:col-span-2">
-                <ErrorBoundary label="System metrics">
-                  {loading ? (
-                    <SkeletonGrid count={5} />
-                  ) : (
-                    <SystemMetrics system={data?.system ?? {}} />
-                  )}
-                </ErrorBoundary>
+                <div className="flex flex-col gap-4 lg:col-span-2">
+                  <ErrorBoundary label="System metrics">
+                    {loading ? (
+                      <SkeletonGrid count={5} />
+                    ) : (
+                      <SystemMetrics system={data?.system ?? {}} />
+                    )}
+                  </ErrorBoundary>
 
-                <ErrorBoundary label="System log">
-                  <SystemLogViewer
-                    logs={logs}
-                    streaming={streaming}
-                    onToggleStream={handleToggleStream}
-                    onClear={handleClearLogs}
-                  />
-                </ErrorBoundary>
+                  <ErrorBoundary label="System log">
+                    <SystemLogViewer
+                      logs={logs}
+                      streaming={streaming}
+                      onToggleStream={handleToggleStream}
+                      onClear={handleClearLogs}
+                    />
+                  </ErrorBoundary>
 
-                <div id="hub-run-history" className="contents scroll-mt-24">
-                  <ErrorBoundary label="Run history">
-                    <RunHistoryTable runs={runs} loading={loading} />
+                  <div id="hub-run-history" className="contents scroll-mt-24">
+                    <ErrorBoundary label="Run history">
+                      <RunHistoryTable runs={runs} loading={loading} />
+                    </ErrorBoundary>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <ErrorBoundary label="Control panel">
+                    <ControlPanel
+                      values={control}
+                      onChange={setControl}
+                      presets={presets}
+                      onSavePreset={handleSavePreset}
+                      onLoadPreset={handleLoadPreset}
+                      onDeletePreset={handleDeletePreset}
+                    />
+                  </ErrorBoundary>
+
+                  <div
+                    id="hub-services-monitor"
+                    className="contents scroll-mt-24"
+                  >
+                    <ErrorBoundary label="Services">
+                      <ServicesMonitor services={data?.services ?? []} />
+                    </ErrorBoundary>
+                  </div>
+
+                  <ErrorBoundary label="Command Hub updates">
+                    <CommandHubUpdates
+                      updates={data?.commandHubUpdates ?? []}
+                      onRefresh={refresh}
+                    />
                   </ErrorBoundary>
                 </div>
               </div>
-
-              <div className="flex flex-col gap-4">
-                <ErrorBoundary label="Control panel">
-                  <ControlPanel
-                    values={control}
-                    onChange={setControl}
-                    presets={presets}
-                    onSavePreset={handleSavePreset}
-                    onLoadPreset={handleLoadPreset}
-                    onDeletePreset={handleDeletePreset}
-                  />
-                </ErrorBoundary>
-
-                <div id="hub-services-monitor" className="contents scroll-mt-24">
-                  <ErrorBoundary label="Services">
-                    <ServicesMonitor services={data?.services ?? []} />
-                  </ErrorBoundary>
-                </div>
-
-                <ErrorBoundary label="Command Hub updates">
-                  <CommandHubUpdates updates={data?.commandHubUpdates ?? []} onRefresh={refresh} />
-                </ErrorBoundary>
-              </div>
-            </div>
             </>
           )}
 
@@ -398,7 +411,10 @@ export default function App() {
             <div className="grid gap-4 lg:grid-cols-3">
               <div className="lg:col-span-2">
                 <ErrorBoundary label="Assistant console">
-                  <AssistantConsole onMessage={handleAddMessage} onRefresh={refresh} />
+                  <AssistantConsole
+                    onMessage={handleAddMessage}
+                    onRefresh={refresh}
+                  />
                 </ErrorBoundary>
                 <div className="mt-4 flex flex-col gap-2">
                   {messages.map((m) => (
@@ -420,10 +436,16 @@ export default function App() {
               </div>
               <div className="flex flex-col gap-4">
                 <ErrorBoundary label="Ideation hub">
-                  <IdeationHub ideas={data?.brainstormIdeas ?? []} onRefresh={refresh} />
+                  <IdeationHub
+                    ideas={data?.brainstormIdeas ?? []}
+                    onRefresh={refresh}
+                  />
                 </ErrorBoundary>
                 <ErrorBoundary label="Meetings">
-                  <MeetingsPanel meetings={data?.meetingAgenda ?? []} onRefresh={refresh} />
+                  <MeetingsPanel
+                    meetings={data?.meetingAgenda ?? []}
+                    onRefresh={refresh}
+                  />
                 </ErrorBoundary>
               </div>
             </div>
@@ -451,16 +473,22 @@ export default function App() {
 
           {activeView === "projects" && (
             <ErrorBoundary label="Projects">
-              <ProjectsPanel projects={data?.projects ?? []} onRefresh={refresh} />
+              <ProjectsPanel
+                projects={data?.projects ?? []}
+                onRefresh={refresh}
+              />
             </ErrorBoundary>
           )}
 
           {activeView === "geminiSync" && (
             <div className="rounded-2xl border border-border-muted bg-surface-2 p-6 text-center shadow-card">
-              <h2 className="mb-2 text-lg font-bold text-text-primary">Gemini Sync</h2>
+              <h2 className="mb-2 text-lg font-bold text-text-primary">
+                Gemini Sync
+              </h2>
               <p className="text-sm text-text-secondary">
-                Sync your chat history and context with Gemini. This panel is ready for
-                integration with the existing /api/gemini/sync endpoint.
+                Sync your chat history and context with Gemini. This panel is
+                ready for integration with the existing /api/gemini/sync
+                endpoint.
               </p>
             </div>
           )}
@@ -502,19 +530,22 @@ export default function App() {
 
           {activeView === "automations" && (
             <div className="rounded-2xl border border-border-muted bg-surface-2 p-6 text-center shadow-card">
-              <h2 className="mb-2 text-lg font-bold text-text-primary">Automations</h2>
+              <h2 className="mb-2 text-lg font-bold text-text-primary">
+                Automations
+              </h2>
               <p className="mb-4 text-sm text-text-secondary">
-                Durable scheduled workflows require a persistent scheduler backend.
-                This feature is planned for Phase E and is not yet enabled.
+                Durable scheduled workflows require a persistent scheduler
+                backend. This feature is planned for Phase E and is not yet
+                enabled.
               </p>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-status-warning/30 bg-status-warning/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-status-warning">
                 Not enabled
               </span>
               <p className="mt-4 text-xs text-text-muted">
                 Automations will support: schedule builder, durable run history,
-                pause/resume, templates, idempotency, bounded retries, dead-letter
-                states, and per-workspace concurrency — backed by a durable queue,
-                not a browser tab.
+                pause/resume, templates, idempotency, bounded retries,
+                dead-letter states, and per-workspace concurrency — backed by a
+                durable queue, not a browser tab.
               </p>
             </div>
           )}

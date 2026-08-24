@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { Plus, Check } from "lucide-react";
 import { toast } from "sonner";
-import { Card, CardHeader, Button, Input, StatusBadge, SkeletonList } from "@/components/ui";
+import {
+  Card,
+  CardHeader,
+  Button,
+  Input,
+  StatusBadge,
+  SkeletonList,
+} from "@/components/ui";
 import { createTask, completeTask } from "@/lib/api";
 import type { TaskItem, CompletedTask } from "@/types";
 
@@ -16,7 +23,13 @@ export interface TaskBoardProps {
 
 /** Mission Tasks & Work History board. */
 
-export function TaskBoard({ tasks, completed, loading, onRefresh, onSelectTask }: TaskBoardProps) {
+export function TaskBoard({
+  tasks,
+  completed,
+  loading,
+  onRefresh,
+  onSelectTask,
+}: TaskBoardProps) {
   const [title, setTitle] = useState("");
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -44,7 +57,9 @@ export function TaskBoard({ tasks, completed, loading, onRefresh, onSelectTask }
       toast.success("Task completed");
       onRefresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not complete task");
+      toast.error(
+        err instanceof Error ? err.message : "Could not complete task",
+      );
     }
   };
 
@@ -80,7 +95,9 @@ export function TaskBoard({ tasks, completed, loading, onRefresh, onSelectTask }
             </p>
             <div className="flex flex-col gap-2">
               {tasks.length === 0 ? (
-                <p className="text-sm text-text-muted">No active tasks in queue.</p>
+                <p className="text-sm text-text-muted">
+                  No active tasks in queue.
+                </p>
               ) : (
                 tasks.slice(0, 8).map((task) => (
                   <div
@@ -125,7 +142,9 @@ export function TaskBoard({ tasks, completed, loading, onRefresh, onSelectTask }
             </p>
             <div className="flex flex-col gap-2">
               {completed.length === 0 ? (
-                <p className="text-sm text-text-muted">No completed tasks yet.</p>
+                <p className="text-sm text-text-muted">
+                  No completed tasks yet.
+                </p>
               ) : (
                 completed.slice(0, 6).map((item) => (
                   <div
@@ -137,7 +156,8 @@ export function TaskBoard({ tasks, completed, loading, onRefresh, onSelectTask }
                         ✓ {item.title}
                       </strong>
                       <small className="text-xs text-text-secondary">
-                        {item.owner} • {new Date(item.completedAt).toLocaleTimeString()}
+                        {item.owner} •{" "}
+                        {new Date(item.completedAt).toLocaleTimeString()}
                       </small>
                     </div>
                     <StatusBadge tone="success" label="Done" dot />
