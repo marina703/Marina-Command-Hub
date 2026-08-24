@@ -1,8 +1,9 @@
 # MarinaAI Command Hub — Queue Runtime Decision
 
-> **Status:** plan only. No production runtime is selected or activated.
+> **Status:** DECIDED (interim) — keep the local/manual harness. No managed
+> or dedicated production runtime is activated.
 > **Branch:** `feature/durable-foundations`
-> **Date:** 2026-08-22
+> **Date:** 2026-08-22 (decision recorded 2026-08-23)
 
 This document is a planning artifact. It explains why the
 local/manual harness shipped in this milestone is **not** a
@@ -13,6 +14,15 @@ deferred staging verification are complete.
 It does **not** select or activate a production path. The
 decision is for the user to make once the gated prerequisites
 have passed.
+
+> **Interim decision (2026-08-23):** Stage-1 staging verification
+> (schema, queue migration, auth, RLS, and durable-workflow remote
+> tests) is complete and passing. The user has chosen to keep the
+> local/manual harness for now rather than commit to Option A or
+> Option B, consistent with an incremental, low-risk rollout
+> preference. `MARINA_LOCAL_WORKER` remains unset; no managed or
+> dedicated worker infrastructure has been provisioned. This can be
+> revisited at any time — see §3/§4 below for the tradeoffs.
 
 ---
 
