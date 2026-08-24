@@ -34,3 +34,14 @@ dist/
 
 # Vercel deploy metadata (auto-generated)
 .vercel/
+
+# ── Secret protection ─────────────────────────────────────────
+# Prevent accidental commit of Supabase service-role keys, database
+# passwords, and other administrative credentials.
+**/supabase-service-role-key*
+**/service_role_key*
+**/sb_secret_*
+**/*.pem
+**/*.key
+**/secrets.json
+**/credentials.json

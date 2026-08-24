@@ -2,13 +2,14 @@
   "allow": {
     "createFiles": true,
     "modifyFiles": true,
-    "runCommands": true,
-    "installDependencies": true,
-    "deploy": true
+    "runCommands": false,
+    "installDependencies": false,
+    "deploy": false
   },
   "block": {
     "deleteFolders": true,
     "deleteLargeFiles": true,
     "runDangerousSystemCommands": true
-  }
+  },
+  "_comment": "High-risk capabilities (runCommands, installDependencies, deploy) additionally require the MARINA_ENABLE_EXEC=1 environment opt-in. High/critical actions requested by the model are queued as approval requests instead of executing automatically."
 }

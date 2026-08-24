@@ -127,7 +127,13 @@ export function AssistantConsole({ onMessage, onRefresh }: AssistantConsoleProps
           placeholder="Give a task or ask a question…"
           className="flex-1"
         />
-        <Button variant="ghost" size="icon" title="Dictate" aria-label="Dictate">
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled
+          title="Voice input is not configured yet"
+          aria-label="Voice input (not configured)"
+        >
           <Mic className="h-4 w-4" />
         </Button>
         <Button variant="primary" onClick={() => handleSend()} loading={sending}>

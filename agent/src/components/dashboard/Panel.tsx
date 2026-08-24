@@ -8,7 +8,12 @@ import { cn } from "@/lib/utils";
    optional progress bar / metric display.
    ============================================================ */
 
-export type PanelStatusTone = "success" | "warning" | "error" | "info" | "neutral";
+export type PanelStatusTone =
+  | "success"
+  | "warning"
+  | "error"
+  | "info"
+  | "neutral";
 
 const STATUS_TONE: Record<PanelStatusTone, string> = {
   success: "bg-status-success/10 text-status-success border-status-success/30",
@@ -22,6 +27,8 @@ const STATUS_TONE: Record<PanelStatusTone, string> = {
 export interface PanelItem {
   id: string;
   label: string;
+  /** Optional small line under the label, e.g. a step-flow indicator while running. */
+  subLabel?: ReactNode;
   status?: string;
   statusTone?: PanelStatusTone;
   action?: ReactNode;
@@ -36,6 +43,8 @@ interface PanelProps {
   /** Optional metric label shown next to the progress bar. */
   progressLabel?: string;
   className?: string;
+  /** Optional DOM id used as an in-page anchor target. */
+  id?: string;
 }
 
 export function Panel({
@@ -45,9 +54,11 @@ export function Panel({
   progress,
   progressLabel,
   className,
+  id,
 }: PanelProps) {
   return (
     <div
+      id={id}
       className={cn(
         "flex flex-col rounded-2xl border border-border-muted bg-surface-2/95 p-4 shadow-card",
         className,
@@ -55,7 +66,9 @@ export function Panel({
     >
       {/* Header */}
       <div className="mb-3">
-        <h3 className="m-0 text-[0.95rem] font-bold text-text-primary">{title}</h3>
+        <h3 className="m-0 text-[0.95rem] font-bold text-text-primary">
+          {title}
+        </h3>
         {subtitle && (
           <p className="mt-0.5 text-xs leading-relaxed text-text-secondary">
             {subtitle}
@@ -70,7 +83,9 @@ export function Panel({
             <span className="text-text-secondary">
               {progressLabel ?? "Progress"}
             </span>
-            <span className="font-semibold text-accent-primary">{progress}%</span>
+            <span className="font-semibold text-accent-primary">
+              {progress}%
+            </span>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
             <div
@@ -93,8 +108,15 @@ export function Panel({
               key={item.id}
               className="flex items-center justify-between gap-3 rounded-lg border border-border-muted bg-surface-3/60 p-2.5"
             >
-              <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
-                {item.label}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-text-primary">
+                  {item.label}
+                </span>
+                {item.subLabel && (
+                  <span className="mt-0.5 block truncate text-[11px] font-medium text-accent-primary/80">
+                    {item.subLabel}
+                  </span>
+                )}
               </span>
               {item.status && (
                 <span

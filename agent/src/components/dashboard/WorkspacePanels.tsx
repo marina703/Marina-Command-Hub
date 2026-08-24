@@ -15,11 +15,18 @@ import {
 
 import { toast } from "sonner";
 import { Button } from "@/components/ui";
-import { getSystemMetrics, runPlaybook } from "@/lib/api";
+import {
+  clearTempFiles,
+  getSystemActionState,
+  getSystemMetrics,
+  optimizeSystem,
+  restartScheduler,
+  runPlaybook,
+  setHighPerformance,
+} from "@/lib/api";
 import type { PlaybookResponse, SystemMetrics } from "@/types";
 import { PlaybookBar } from "./PlaybookBar";
 import { Panel, type PanelItem } from "./Panel";
-
 
 /* ============================================================
    Workspace Panels
@@ -40,45 +47,75 @@ const ONE_CLICK_TOOLS: Array<{ id: string; label: string; tooltip: string }> = [
   {
     id: "market-position",
     label: "Market Position Analyzer",
-    tooltip: "Analyze the market position of the Marina AI portfolio and identify gaps vs competitors.",
+    tooltip:
+      "Analyze the market position of the Marina AI portfolio and identify gaps vs competitors.",
   },
   {
     id: "competitor-snapshot",
     label: "Competitor Snapshot",
-    tooltip: "Generate a competitor snapshot with strengths, weaknesses, and exploitable gaps.",
+    tooltip:
+      "Generate a competitor snapshot with strengths, weaknesses, and exploitable gaps.",
   },
   {
     id: "audience-persona",
     label: "Audience Persona Builder",
-    tooltip: "Build detailed audience personas with demographics, goals, pain points, and hooks.",
+    tooltip:
+      "Build detailed audience personas with demographics, goals, pain points, and hooks.",
   },
   {
     id: "trend-pulse",
     label: "Trend Pulse Scan",
-    tooltip: "Scan current trends and surface opportunities with recommended actions.",
+    tooltip:
+      "Scan current trends and surface opportunities with recommended actions.",
   },
   {
     id: "offer-angle",
     label: "Offer Angle Generator",
-    tooltip: "Generate 5 offer angles with core promise, target segment, and hook.",
+    tooltip:
+      "Generate 5 offer angles with core promise, target segment, and hook.",
   },
   {
     id: "funnel-weakpoint",
     label: "Funnel Weak-Point Detector",
-    tooltip: "Analyze the sales funnel and identify weak points at each stage with fixes.",
+    tooltip:
+      "Analyze the sales funnel and identify weak points at each stage with fixes.",
   },
+];
+
+/** Step-flow labels cycled under a One-Click Tool card while it runs. */
+const RUN_STEPS = [
+  "Step 1/3 · Gathering context",
+  "Step 2/3 · Analyzing",
+  "Step 3/3 · Drafting report",
 ];
 
 export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
   const [selectedPlaybook, setSelectedPlaybook] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [runningPlaybook, setRunningPlaybook] = useState<string | null>(null);
+  const [runStepIndex, setRunStepIndex] = useState(0);
 
-  // Local action-button state
+  // Cycle the step-flow label while a tool is running.
+  useEffect(() => {
+    if (!runningPlaybook) {
+      setRunStepIndex(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setRunStepIndex((prev) => (prev + 1) % RUN_STEPS.length);
+    }, 1100);
+    return () => clearInterval(interval);
+  }, [runningPlaybook]);
+
+  // Real system-action state (loaded from /api/system/state)
+  const [tempCount, setTempCount] = useState<number | null>(null);
   const [tempCleared, setTempCleared] = useState(false);
   const [servicesRestarted, setServicesRestarted] = useState(false);
+  const [schedulerActive, setSchedulerActive] = useState<boolean | null>(null);
   const [optimized, setOptimized] = useState(false);
+  const [optimizeSummary, setOptimizeSummary] = useState<string | null>(null);
   const [highPerf, setHighPerf] = useState(false);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
 
   // Report pop-up state
   const [report, setReport] = useState<PlaybookResponse | null>(null);
@@ -100,9 +137,22 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
     }
   }, []);
 
+  // Load truthful system-action state (temp report count, scheduler, perf mode).
+  const loadSystemState = useCallback(async () => {
+    try {
+      const state = await getSystemActionState();
+      setTempCount(state.tempReports.count);
+      setSchedulerActive(state.scheduler.timerActive);
+      setHighPerf(state.performanceMode === "high");
+    } catch {
+      /* keep last known values; panel shows neutral status */
+    }
+  }, []);
+
   useEffect(() => {
     loadMetrics();
-  }, [loadMetrics]);
+    loadSystemState();
+  }, [loadMetrics, loadSystemState]);
 
   const handleRun = useCallback(
     async (id: string, prompt?: string) => {
@@ -129,37 +179,93 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
     [onRefresh, loadMetrics],
   );
 
-
-  const toggleTemp = () => {
-    setTempCleared((v) => {
-      const next = !v;
-      toast.success(next ? "Temp files cleared" : "Temp files restored");
-      return next;
-    });
+  /** Clear generated tmp/*.md reports via the real backend. */
+  const handleClearTemp = async () => {
+    if (actionBusy) return;
+    setActionBusy("clear-temp");
+    try {
+      const res = await clearTempFiles();
+      setTempCleared(true);
+      setTempCount(0);
+      toast.success(`Cleared ${res.removed} report file(s)`, {
+        description: `${(res.bytesFreed / 1024).toFixed(1)} KB freed`,
+      });
+      onRefresh?.();
+    } catch (err) {
+      toast.error("Clear failed", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setActionBusy(null);
+    }
   };
 
-  const toggleServices = () => {
-    setServicesRestarted((v) => {
-      const next = !v;
-      toast.success(next ? "Services restarted" : "Services running");
-      return next;
-    });
+  /** Restart the in-process automation loop via the real backend. */
+  const handleRestartScheduler = async () => {
+    if (actionBusy) return;
+    setActionBusy("restart-scheduler");
+    try {
+      const res = await restartScheduler();
+      setServicesRestarted(true);
+      setSchedulerActive(res.scheduler?.timerActive ?? null);
+      toast.success("Automation loop restarted", {
+        description: "In-process scheduler is running again",
+      });
+      onRefresh?.();
+    } catch (err) {
+      toast.error("Restart failed", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setActionBusy(null);
+    }
   };
 
-  const toggleOptimize = () => {
-    setOptimized((v) => {
-      const next = !v;
-      toast.success(next ? "System optimized" : "Optimization reverted");
-      return next;
-    });
+  /** Optimize: clear reports + compact dashboard state via the real backend. */
+  const handleOptimize = async () => {
+    if (actionBusy) return;
+    setActionBusy("optimize");
+    try {
+      const res = await optimizeSystem();
+      setOptimized(true);
+      setTempCount(0);
+      setOptimizeSummary(
+        `${res.reportsRemoved} report(s), ${(res.reportsBytesFreed / 1024).toFixed(1)} KB freed`,
+      );
+      toast.success("Workspace optimized", {
+        description: `${res.reportsRemoved} report(s) removed • ${(res.reportsBytesFreed / 1024).toFixed(1)} KB + ${(res.stateBytesSaved / 1024).toFixed(1)} KB saved`,
+      });
+      onRefresh?.();
+    } catch (err) {
+      toast.error("Optimize failed", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setActionBusy(null);
+    }
   };
 
-  const toggleHighPerf = () => {
-    setHighPerf((v) => {
-      const next = !v;
-      toast.info(next ? "High-performance mode ON" : "High-performance mode OFF");
-      return next;
-    });
+  /** Toggle the persisted high-performance LLM tuning profile. */
+  const handleToggleHighPerf = async () => {
+    if (actionBusy) return;
+    const next = !highPerf;
+    setActionBusy("high-perf");
+    try {
+      const res = await setHighPerformance(next);
+      setHighPerf(res.mode === "high");
+      toast.info(
+        res.mode === "high"
+          ? `High-performance mode ON (ctx ${res.numCtx}, predict ${res.numPredict})`
+          : "High-performance mode OFF (standard profile)",
+      );
+      onRefresh?.();
+    } catch (err) {
+      toast.error("Toggle failed", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setActionBusy(null);
+    }
   };
 
   const runningStatus = running ? "Running…" : "Ready";
@@ -185,27 +291,57 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
     },
   ];
 
-
   const operationsItems: PanelItem[] = [
     {
       id: "ops-1",
-      label: "Clear temp files",
-      status: tempCleared ? "Cleared" : "Pending",
+      label:
+        tempCount !== null && tempCount > 0
+          ? `Clear temp files (${tempCount})`
+          : "Clear temp files",
+      status: tempCleared
+        ? "Cleared"
+        : tempCount
+          ? `${tempCount} files`
+          : "Idle",
       statusTone: tempCleared ? "success" : "neutral",
       action: (
-        <Button variant="ghost" size="sm" onClick={toggleTemp}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleClearTemp}
+          loading={actionBusy === "clear-temp"}
+          disabled={actionBusy !== null && actionBusy !== "clear-temp"}
+          title="Remove generated playbook/tool reports from tmp/"
+        >
           <Eraser className="h-3.5 w-3.5" />
-          {tempCleared ? "Restore" : "Clear"}
+          Clear
         </Button>
       ),
     },
     {
       id: "ops-2",
-      label: "Restart services",
-      status: servicesRestarted ? "Restarted" : "Stable",
-      statusTone: servicesRestarted ? "success" : "neutral",
+      label: "Restart automation loop",
+      status: servicesRestarted
+        ? "Restarted"
+        : schedulerActive === null
+          ? "Unknown"
+          : schedulerActive
+            ? "Running"
+            : "Stopped",
+      statusTone: servicesRestarted
+        ? "success"
+        : schedulerActive === false
+          ? "warning"
+          : "neutral",
       action: (
-        <Button variant="ghost" size="sm" onClick={toggleServices}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleRestartScheduler}
+          loading={actionBusy === "restart-scheduler"}
+          disabled={actionBusy !== null && actionBusy !== "restart-scheduler"}
+          title="Stop and start the in-process autonomous scheduler"
+        >
           <RefreshCw className="h-3.5 w-3.5" />
           Restart
         </Button>
@@ -216,13 +352,22 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
   const systemItems: PanelItem[] = [
     {
       id: "sys-1",
-      label: "Optimize system",
+      label: optimizeSummary
+        ? `Optimized (${optimizeSummary})`
+        : "Optimize workspace",
       status: optimized ? "Optimized" : "Idle",
       statusTone: optimized ? "success" : "neutral",
       action: (
-        <Button variant="ghost" size="sm" onClick={toggleOptimize}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleOptimize}
+          loading={actionBusy === "optimize"}
+          disabled={actionBusy !== null && actionBusy !== "optimize"}
+          title="Clear generated reports and compact the dashboard state file"
+        >
           <Gauge className="h-3.5 w-3.5" />
-          {optimized ? "Revert" : "Optimize"}
+          Optimize
         </Button>
       ),
     },
@@ -230,9 +375,16 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
       id: "sys-2",
       label: "High-performance mode",
       status: highPerf ? "ON" : "OFF",
-      statusTone: highPerf ? "warning" : "neutral",
+      statusTone: highPerf ? "info" : "neutral",
       action: (
-        <Button variant="ghost" size="sm" onClick={toggleHighPerf}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleToggleHighPerf}
+          loading={actionBusy === "high-perf"}
+          disabled={actionBusy !== null && actionBusy !== "high-perf"}
+          title="Persist a larger LLM context/predict profile for future runs"
+        >
           <Zap className="h-3.5 w-3.5" />
           Toggle
         </Button>
@@ -259,6 +411,7 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
     return {
       id: tool.id,
       label: tool.label,
+      subLabel: isRunning ? RUN_STEPS[runStepIndex] : undefined,
       status,
       statusTone,
       action: (
@@ -290,13 +443,10 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
     };
   });
 
-
-
   return (
     <div className="flex flex-col gap-4">
       <PlaybookBar
         welcome="Rapid Fire"
-
         selected={selectedPlaybook ?? undefined}
         onSelect={setSelectedPlaybook}
         onRun={handleRun}
@@ -325,13 +475,14 @@ export function WorkspacePanels({ onRefresh }: WorkspacePanelsProps) {
           progressLabel="Performance"
         />
         <Panel
+          id="hub-one-click-tools"
           title="One-Click Tools"
           subtitle="Supporting tools & quick scans"
           items={strategyItems}
           progress={running ? 45 : 0}
           progressLabel={running ? "Running…" : "Idle"}
+          className="scroll-mt-24"
         />
-
       </div>
 
       {/* Status strip */}

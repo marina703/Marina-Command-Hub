@@ -2,7 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Card, CardHeader, Button, StatusBadge } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { updateConfig } from "@/lib/api";
+import { scanProject, updateConfig } from "@/lib/api";
 import type { LLMConfig } from "@/types";
 
 export interface ModelHubProps {
@@ -23,6 +23,8 @@ const MODELS = [
 export function ModelHub({ config, onConfigChange }: ModelHubProps) {
   const [apiKey, setApiKey] = useState("");
   const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanSummary, setScanSummary] = useState<string | null>(null);
 
   const activeProvider = config?.provider ?? "ollama";
   const activeModel = config?.model ?? "";
@@ -53,6 +55,26 @@ export function ModelHub({ config, onConfigChange }: ModelHubProps) {
       toast.error(err instanceof Error ? err.message : "Failed to save API key");
     } finally {
       setSaving(false);
+    }
+  };
+
+  /** Real workspace context scan via GET /api/project/scan. */
+  const handleScan = async () => {
+    if (scanning) return;
+    setScanning(true);
+    try {
+      const res = await scanProject();
+      setScanSummary(`${res.count} context file(s) indexed`);
+      toast.success("Workspace scan complete", {
+        description: `${res.count} context file(s) indexed for the active model`,
+      });
+    } catch (err) {
+      setScanSummary(null);
+      toast.error("Scan failed", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -122,7 +144,20 @@ export function ModelHub({ config, onConfigChange }: ModelHubProps) {
         </div>
       </div>
 
-      <Button variant="outline" className="w-full" onClick={() => toast.info("Scanning workspace context…")}>
+      {scanSummary && (
+        <p
+          role="status"
+          className="mb-2 rounded-lg border border-border-muted bg-white/2 px-3 py-2 text-xs text-text-secondary"
+        >
+          Last scan: {scanSummary}
+        </p>
+      )}
+      <Button
+        variant="outline"
+        className="w-full"
+        onClick={handleScan}
+        loading={scanning}
+      >
         Scan Workspace Context
       </Button>
     </Card>

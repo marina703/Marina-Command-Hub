@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { COMMAND_HUB_HREF } from "@/lib/commandHub";
 
 export default function Home() {
   return (
@@ -27,7 +27,7 @@ export default function Home() {
             Architecture
           </a>
           <a
-            href="http://localhost:3000"
+            href={COMMAND_HUB_HREF}
             className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#00f5ff]/20 to-[#ff2d95]/20 border border-[#00f5ff]/40 text-white font-semibold hover:shadow-[0_0_15px_rgba(0,245,255,0.4)] transition-all"
           >
             Launch Command Hub
@@ -54,7 +54,7 @@ export default function Home() {
 
         <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
           <a
-            href="http://localhost:3000"
+            href={COMMAND_HUB_HREF}
             className="px-8 py-4 rounded-xl bg-gradient-to-r from-[#00f5ff]/30 to-[#ff2d95]/30 border border-[#00f5ff]/50 text-white font-bold text-base shadow-[0_0_20px_rgba(0,245,255,0.3)] hover:scale-105 transition-all"
           >
             Open Command Hub →

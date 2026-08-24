@@ -1,3 +1,6 @@
+// Load .env.local before any other imports so process.env is populated.
+try { require("dotenv").config({ path: ".env.local" }); } catch { /* dotenv not installed */ }
+
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
@@ -71,37 +74,66 @@ function parseInstructions(rawText) {
   return [];
 }
 
-async function processInstruction(instruction) {
+/**
+ * Effective permission resolution.
+ *
+ * High-risk capabilities (shell commands, dependency installs, deploys)
+ * require BOTH the permissions.json flag AND the MARINA_ENABLE_EXEC=1
+ * environment opt-in. This keeps a leaked/edited config file from
+ * silently re-enabling arbitrary command execution.
+ */
+const EXEC_GATED_FLAGS = new Set(["runCommands", "installDependencies", "deploy"]);
+
+function effectivePermission(flag) {
+  const fileAllow = Boolean(permissions.allow && permissions.allow[flag]);
+  if (EXEC_GATED_FLAGS.has(flag)) {
+    return fileAllow && process.env.MARINA_ENABLE_EXEC === "1";
+  }
+  return fileAllow;
+}
+
+/**
+ * Execute a single parsed instruction.
+ * @param {{action: string, payload?: object}} instruction
+ * @param {{skipPermissionCheck?: boolean}} options
+ *   skipPermissionCheck is reserved for the server-side approval
+ *   execution path, which has already enforced policy + explicit
+ *   human approval. Never pass it from model-output-driven flows.
+ */
+async function processInstruction(instruction, options = {}) {
   if (!instruction || !instruction.action) {
     return;
   }
 
   const { action, payload = {} } = instruction;
+  const allowed = (flag) =>
+    options.skipPermissionCheck ? true : effectivePermission(flag);
 
-  if (action === "createFile" && permissions.allow.createFiles) {
+  if (action === "createFile" && allowed("createFiles")) {
     return writeFile(payload.path, payload.content || "");
   }
 
-  if (action === "modifyFile" && permissions.allow.modifyFiles) {
+  if (action === "modifyFile" && allowed("modifyFiles")) {
     return modifyFile(payload.path, payload.changes || "");
   }
 
-  if (action === "runCommand" && permissions.allow.runCommands) {
+  if (action === "runCommand" && allowed("runCommands")) {
     return runCommand(payload.command);
   }
 
   if (
     action === "installDependencies" &&
-    permissions.allow.installDependencies
+    allowed("installDependencies")
   ) {
     return installDeps(payload.packageManager || "npm", payload.packages || []);
   }
 
-  if (action === "deploy" && permissions.allow.deploy) {
+  if (action === "deploy" && allowed("deploy")) {
     return deploy(payload.target);
   }
 
   console.log("Blocked action:", action);
+  return { blocked: true, reason: "permission denied or unknown action" };
 }
 
 // LOCAL STORAGE PERSISTENCE for dashboard state
@@ -535,6 +567,7 @@ module.exports = {
   ensureFile,
   parseInstructions,
   processInstruction,
+  effectivePermission,
   askCopilot,
   askLLM,
   getLLMConfig,

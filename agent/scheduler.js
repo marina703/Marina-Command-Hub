@@ -17,6 +17,7 @@ const {
 
 let intervalId = null;
 let isRunning = false;
+let loopBusy = false;
 
 async function generateStandupBrief() {
   const state = readState();
@@ -75,8 +76,8 @@ async function generateStandupBrief() {
 }
 
 async function runAutonomousLoop() {
-  if (isRunning) return;
-  isRunning = true;
+  if (loopBusy) return;
+  loopBusy = true;
   try {
     const context = collectProjectContext();
     const count = (context.match(/File:/g) || []).length;
@@ -117,7 +118,7 @@ async function runAutonomousLoop() {
   } catch (err) {
     console.error("Autonomous loop error:", err);
   } finally {
-    isRunning = false;
+    loopBusy = false;
   }
 }
 
@@ -136,9 +137,18 @@ function stopScheduler() {
   }
 }
 
+/** Truthful runtime status of the in-process automation loop. */
+function getSchedulerStatus() {
+  return {
+    timerActive: Boolean(intervalId),
+    cycleInProgress: loopBusy,
+  };
+}
+
 module.exports = {
   startScheduler,
   stopScheduler,
   generateStandupBrief,
   runAutonomousLoop,
+  getSchedulerStatus,
 };

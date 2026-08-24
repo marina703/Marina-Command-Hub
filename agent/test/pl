@@ -1,0 +1,214 @@
+/* Plan versioning and lifecycle tests — node:test, zero dependencies. */
+const { test, beforeEach } = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "marina-plan-"));
+process.env.MARINA_STATE_PATH = path.join(tmpDir, "state.json");
+
+const {
+  createPlan,
+  getPlan,
+  getPlansForTask,
+  updatePlanStatus,
+  createRun,
+  updateRunStatus,
+  getRun,
+  getRunsForTask,
+  getRunEvents,
+  createArtifact,
+  updateArtifactState,
+  getArtifacts,
+  addSource,
+} = require("../dashboard-state");
+
+beforeEach(() => {
+  if (fs.existsSync(process.env.MARINA_STATE_PATH)) {
+    fs.rmSync(process.env.MARINA_STATE_PATH);
+  }
+});
+
+test("createPlan creates a draft plan with version 1 and steps", () => {
+  const plan = createPlan({
+    taskId: "task-1",
+    summary: "Test plan summary",
+    assumptions: ["Assumption A", "Assumption B"],
+    risks: ["Risk X"],
+    steps: [
+      { title: "Step 1", riskTier: "low", requiresApproval: false },
+      { title: "Step 2", riskTier: "high", requiresApproval: true },
+    ],
+  });
+
+  assert.equal(plan.version, 1);
+  assert.equal(plan.status, "draft");
+  assert.equal(plan.taskId, "task-1");
+
+  const full = getPlan(plan.id);
+  assert.equal(full.steps.length, 2);
+  assert.equal(full.steps[0].title, "Step 1");
+  assert.equal(full.steps[0].riskTier, "low");
+  assert.equal(full.steps[1].riskTier, "high");
+  assert.equal(full.steps[1].requiresApproval, true);
+});
+
+test("second plan for same task gets version 2", () => {
+  const plan1 = createPlan({ taskId: "task-1", summary: "v1" });
+  const plan2 = createPlan({ taskId: "task-1", summary: "v2" });
+
+  assert.equal(plan1.version, 1);
+  assert.equal(plan2.version, 2);
+});
+
+test("approving a plan supersedes prior approved versions", () => {
+  const plan1 = createPlan({ taskId: "task-1", summary: "v1" });
+  updatePlanStatus(plan1.id, "approved");
+
+  const plan2 = createPlan({ taskId: "task-1", summary: "v2" });
+  updatePlanStatus(plan2.id, "approved");
+
+  const plans = getPlansForTask("task-1");
+  const v1 = plans.find((p) => p.version === 1);
+  const v2 = plans.find((p) => p.version === 2);
+
+  assert.equal(v1.status, "superseded");
+  assert.equal(v2.status, "approved");
+  assert.ok(v2.approvedAt);
+});
+
+test("rejecting a plan sets status to rejected", () => {
+  const plan = createPlan({ taskId: "task-1" });
+  const result = updatePlanStatus(plan.id, "rejected");
+  assert.equal(result.ok, true);
+  assert.equal(result.plan.status, "rejected");
+});
+
+test("getPlansForTask returns all versions with steps", () => {
+  createPlan({
+    taskId: "task-1",
+    steps: [{ title: "A" }, { title: "B" }],
+  });
+  createPlan({
+    taskId: "task-1",
+    steps: [{ title: "C" }],
+  });
+
+  const plans = getPlansForTask("task-1");
+  assert.equal(plans.length, 2);
+  assert.equal(plans[0].steps.length, 1); // most recent first
+  assert.equal(plans[1].steps.length, 2);
+});
+
+test("invalid plan status is rejected", () => {
+  const plan = createPlan({ taskId: "task-1" });
+  const result = updatePlanStatus(plan.id, "bogus");
+  assert.equal(result.ok, false);
+  assert.match(result.message, /Invalid plan status/);
+});
+
+test("createRun creates a queued run with attempt count", () => {
+  const run = createRun({ taskId: "task-1", planId: "plan-1" });
+  assert.equal(run.status, "queued");
+  assert.equal(run.attemptCount, 1);
+  assert.equal(run.taskId, "task-1");
+});
+
+test("updateRunStatus transitions and records events", () => {
+  const run = createRun({ taskId: "task-1" });
+  updateRunStatus(run.id, "active");
+  updateRunStatus(run.id, "succeeded", { summary: "Done" });
+
+  const full = getRun(run.id);
+  assert.equal(full.status, "succeeded");
+  assert.ok(full.startedAt);
+  assert.ok(full.endedAt);
+  assert.ok(full.timeUsedMs >= 0);
+
+  const events = getRunEvents(run.id);
+  assert.ok(events.length >= 3); // created, active, succeeded
+  assert.ok(events.some((e) => e.event === "run.created"));
+  assert.ok(events.some((e) => e.event === "run.active"));
+  assert.ok(events.some((e) => e.event === "run.succeeded"));
+});
+
+test("run events maintain stable sequence ordering", () => {
+  const run = createRun({ taskId: "task-1" });
+  updateRunStatus(run.id, "active");
+  updateRunStatus(run.id, "failed", { summary: "Error" });
+
+  const events = getRunEvents(run.id);
+  for (let i = 1; i < events.length; i++) {
+    assert.ok(events[i].sequence > events[i - 1].sequence);
+  }
+});
+
+test("retry creates a linked new run with incremented attempt", () => {
+  const run1 = createRun({ taskId: "task-1" });
+  updateRunStatus(run1.id, "active");
+  updateRunStatus(run1.id, "failed");
+
+  const run2 = createRun({
+    taskId: run1.taskId,
+    planId: run1.planId,
+    attemptCount: run1.attemptCount,
+    parentRunId: run1.id,
+  });
+
+  assert.equal(run2.attemptCount, 2);
+  assert.equal(run2.parentRunId, run1.id);
+  assert.equal(run2.status, "queued");
+});
+
+test("createArtifact stores provenance and draft state", () => {
+  const artifact = createArtifact({
+    taskId: "task-1",
+    runId: "run-1",
+    type: "report",
+    displayName: "Market Analysis",
+    storageRef: "tmp/market-analysis.md",
+    summary: "Q3 market analysis report",
+    provenance: { source: "playbook", model: "gemini" },
+  });
+
+  assert.equal(artifact.state, "draft");
+  assert.equal(artifact.type, "report");
+  assert.equal(artifact.provenance.source, "playbook");
+});
+
+test("updateArtifactState transitions draft to ready", () => {
+  const artifact = createArtifact({ taskId: "task-1" });
+  const result = updateArtifactState(artifact.id, "ready");
+  assert.equal(result.ok, true);
+  assert.equal(result.artifact.state, "ready");
+});
+
+test("getArtifacts filters by taskId and state", () => {
+  createArtifact({ taskId: "task-1", type: "report" });
+  createArtifact({ taskId: "task-2", type: "code" });
+  updateArtifactState(
+    createArtifact({ taskId: "task-1", type: "report" }).id,
+    "ready",
+  );
+
+  const task1Artifacts = getArtifacts({ taskId: "task-1" });
+  assert.equal(task1Artifacts.length, 2);
+
+  const readyArtifacts = getArtifacts({ state: "ready" });
+  assert.equal(readyArtifacts.length, 1);
+});
+
+test("addSource stores provenance with trust label", () => {
+  const source = addSource({
+    taskId: "task-1",
+    url: "https://example.com/article",
+    title: "Industry Report",
+    excerpt: "Key findings from Q3...",
+    trustLabel: "verified",
+  });
+
+  assert.equal(source.trustLabel, "verified");
+  assert.equal(source.url, "https://example.com/article");
+  assert.ok(source.retrievedAt);
+});
