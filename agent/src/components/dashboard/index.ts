@@ -22,4 +22,5 @@ export { SecurityPanel } from "./SecurityPanel";
 export { TaskDetail } from "./TaskDetail";
 export { IntegrationsPanel } from "./IntegrationsPanel";
 export { OperationsShelf } from "./OperationsShelf";
+export { CodeGenPanel } from "./CodeGenPanel";
 export { LoginPage } from "./LoginPage";

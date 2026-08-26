@@ -425,4 +425,47 @@ export async function listDurableWorkflows() {
   });
 }
 
+export interface CodeGenFile {
+  path: string;
+  content: string;
+}
+
+export interface CodeGenManifest {
+  projectName: string;
+  template: string;
+  fileCount: number;
+  files: { path: string; sizeBytes: number }[];
+}
+
+export interface CodeGenResult {
+  ok: boolean;
+  project?: {
+    template: string;
+    projectName: string;
+    fileCount: number;
+    files?: CodeGenFile[];
+  };
+  manifest?: CodeGenManifest;
+  zip?: string; // base64 when outputZip=true
+  filename?: string;
+}
+
+/** Generate a project from a free-text spec (or template + variables). */
+export async function generateCodeProject(
+  workspaceId: string,
+  session: Session | null,
+  options: {
+    spec?: string;
+    template?: string;
+    variables?: Record<string, string>;
+    outputZip?: boolean;
+  } = {}
+) {
+  return request<CodeGenResult>("/api/durable/code-gen", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, ...options }),
+    session,
+  });
+}
+
 export { getSessionOrThrow };

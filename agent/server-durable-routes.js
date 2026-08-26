@@ -1111,27 +1111,55 @@ async function handleDurable(req, res, url) {
     const auth = await requireWorkspace(req, body.workspaceId);
     if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
     
-    const { template, variables, outputZip } = body;
-    if (!template || !variables || !variables.name) {
-      return json(res, 400, { ok: false, message: "template and variables.name are required" });
-    }
-    
+    const { template, variables, outputZip, spec } = body;
     const codeGen = require("./server-code-gen");
-    const result = codeGen.generateProject(template, variables);
-    
+
+    let result;
+    if (spec) {
+      // Spec-driven scaffolding: auto-select template + derive variables.
+      const analyzed = codeGen.analyzeSpec(spec, variables);
+      result = codeGen.generateProject(analyzed.template, analyzed.variables);
+    } else {
+      if (!template || !variables || !variables.name) {
+        return json(res, 400, { ok: false, message: "spec OR template + variables.name are required" });
+      }
+      result = codeGen.generateProject(template, variables);
+    }
+
     if (!result.ok) {
       return json(res, 400, { ok: false, message: result.message });
     }
-    
+
+    // Build a manifest (file list + sizes) for the UI.
+    const manifest = {
+      projectName: result.projectName,
+      template: result.template,
+      fileCount: result.fileCount,
+      files: result.files.map((f) => ({
+        path: f.path,
+        sizeBytes: Buffer.byteLength(f.content, "utf8"),
+      })),
+    };
+
     if (outputZip) {
       const zipResult = await codeGen.createProjectZip(result);
       if (!zipResult.ok) {
         return json(res, 500, { ok: false, message: zipResult.message });
       }
-      return json(res, 200, { ok: true, zip: zipResult.base64, filename: zipResult.filename });
+      return json(res, 200, {
+        ok: true,
+        project: { template: result.template, projectName: result.projectName, fileCount: result.fileCount },
+        manifest,
+        zip: zipResult.base64,
+        filename: zipResult.filename,
+      });
     }
-    
-    return json(res, 200, { ok: true, ...result });
+
+    return json(res, 200, {
+      ok: true,
+      project: { template: result.template, projectName: result.projectName, fileCount: result.fileCount, files: result.files },
+      manifest,
+    });
   }
 
   async function sandboxRoute(req, res) {

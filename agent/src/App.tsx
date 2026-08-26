@@ -29,6 +29,7 @@ import {
   IntegrationsPanel,
   OperationsShelf,
   TaskDetail,
+  CodeGenPanel,
 } from "@/components/dashboard";
 import type { ViewId } from "@/components/dashboard/Sidebar";
 import type { ChatMessage } from "@/components/dashboard/AssistantConsole";
@@ -525,6 +526,15 @@ export default function App() {
           {activeView === "integrations" && (
             <ErrorBoundary label="Integrations & tools">
               <IntegrationsPanel />
+            </ErrorBoundary>
+          )}
+
+          {activeView === "codegen" && (
+            <ErrorBoundary label="Code Generation">
+              <CodeGenPanel
+                workspaceId={auth.session ? "default" : null}
+                session={auth.session}
+              />
             </ErrorBoundary>
           )}
 
