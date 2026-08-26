@@ -48,7 +48,7 @@ async function generateImage({ prompt, provider, size = "1024x1024", n = 1 }) {
       const res = await fetch(config.baseUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: "dall-e-3", prompt, n, size }),
+        body: JSON.stringify({ model: "gpt-image-1", prompt, n, size }),
         signal: controller.signal,
       });
       if (!res.ok) {
