@@ -1237,6 +1237,22 @@ async function handleDurable(req, res, url) {
     return json(res, 200, { ok: true, task: result.task, plan: result.plan });
   }
 
+  async function slackDeliverableRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+
+    const { messages, type, format, title } = body;
+    if (!type || !Array.isArray(messages)) {
+      return json(res, 400, { ok: false, message: "type and messages (array) are required" });
+    }
+
+    const slackAgent = require("./server-slack-agent");
+    const result = await slackAgent.generateDeliverable({ messages, type, format, title });
+    if (!result.ok) return json(res, 400, { ok: false, message: result.message });
+    return json(res, 200, { ok: true, filename: result.filename, base64: result.base64, sections: result.sections });
+  }
+
   async function sandboxRoute(req, res) {
     const body = await readJson(req);
     const auth = await requireWorkspace(req, body.workspaceId);
@@ -1369,6 +1385,8 @@ async function handleDurable(req, res, url) {
     return memoryRoute(req, res);
   if (path === "/api/durable/email/inbound" && method === "POST")
     return emailInboundRoute(req, res);
+  if (path === "/api/durable/slack/deliverable" && method === "POST")
+    return slackDeliverableRoute(req, res);
   if (path === "/api/durable/sandbox" && method === "POST")
     return sandboxRoute(req, res);
 
