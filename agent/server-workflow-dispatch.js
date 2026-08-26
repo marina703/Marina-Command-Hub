@@ -132,14 +132,23 @@ async function runResearch(ctx) {
   return result;
 }
 
-/** Code generation handler: template scaffold → project artifact + manifest (optionally zip). */
+/** Code generation handler: template scaffold → project artifact + manifest (optionally zip).
+    Accepts either an explicit template + variables, or a free-text spec that
+    auto-selects the template (deterministic, providerless). */
 async function runCodeGen(ctx) {
-  const { template, variables } = ctx;
-  if (!template || !variables || !variables.name) {
-    return { ok: false, message: "template and variables.name are required", failureClassification: "invalid_input" };
+  const { template, variables, spec } = ctx;
+  let project;
+  let selectedTemplate = template;
+  if (spec) {
+    const analyzed = codeGen.analyzeSpec(spec, variables);
+    selectedTemplate = analyzed.template;
+    project = codeGen.generateProject(analyzed.template, analyzed.variables);
+  } else {
+    if (!template || !variables || !variables.name) {
+      return { ok: false, message: "spec OR template + variables.name are required", failureClassification: "invalid_input" };
+    }
+    project = codeGen.generateProject(template, variables);
   }
-
-  const project = codeGen.generateProject(template, variables);
   if (!project.ok) {
     return { ok: false, message: project.message, failureClassification: "invalid_input" };
   }
@@ -187,7 +196,7 @@ async function runCodeGen(ctx) {
         sizeBytes: Buffer.byteLength(content, "utf8"),
         state: "draft",
         summary: `Generated ${project.fileCount} files from template "${project.template}".`,
-        provenance: { workflow: "code-generation", template, variables, projectName: project.projectName },
+        provenance: { workflow: "code-generation", template: selectedTemplate, variables, spec: spec || null, projectName: project.projectName },
       });
       artifact = artifactResult.ok ? artifactResult.artifact : null;
     } catch (err) {

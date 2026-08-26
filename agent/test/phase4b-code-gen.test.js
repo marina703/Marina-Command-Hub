@@ -57,3 +57,35 @@ test("dispatch code-generation rejects missing variables", async () => {
   assert.equal(result.ok, false);
   assert.equal(result.failureClassification, "invalid_input");
 });
+
+test("analyzeSpec maps keywords to templates", () => {
+  assert.equal(codeGen.analyzeSpec("Build a react dashboard UI").template, "react-app");
+  assert.equal(codeGen.analyzeSpec("python fastapi backend service").template, "python-fastapi");
+  assert.equal(codeGen.analyzeSpec("build an express rest api").template, "express-api");
+  assert.equal(codeGen.analyzeSpec("a cli tool for the terminal").template, "node-cli");
+  assert.equal(codeGen.analyzeSpec("unrelated text").template, codeGen.DEFAULT_TEMPLATE);
+});
+
+test("deriveName produces a safe project name", () => {
+  assert.equal(codeGen.deriveName("My Cool Project"), "my");
+  assert.equal(codeGen.deriveName("123 Dashboard"), "123");
+  assert.equal(codeGen.deriveName("!!!"), "project");
+});
+
+test("scaffoldProject builds a project from a spec", () => {
+  const result = codeGen.scaffoldProject("Create a react frontend for tracking tasks");
+  assert.equal(result.ok, true);
+  assert.equal(result.template, "React Application (Vite + TypeScript)");
+  assert.ok(result.files.length > 0);
+});
+
+test("dispatch code-generation with a spec auto-selects template", async () => {
+  const result = await dispatch.dispatch("code-generation", {
+    spec: "python fastapi backend service for orders",
+    outputZip: true,
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.project.template, "Python FastAPI Service");
+  assert.ok(result.manifest.files.length > 0);
+  assert.ok(result.zip);
+});

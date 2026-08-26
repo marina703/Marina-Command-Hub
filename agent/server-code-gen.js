@@ -587,9 +587,73 @@ async function createProjectZip(project) {
   };
 }
 
+/* ── Project Scaffolding Workflow (spec → file tree) ──────────
+   Deterministic, providerless: a free-text spec is mapped to the best-fit
+   template by keyword, then expanded into a file tree. No LLM, no network,
+   no shell — safe by construction. */
+const SPEC_TEMPLATE_RULES = [
+  { template: "react-app", keywords: ["react", "frontend", "ui", "web app", "vite", "component", "dashboard"] },
+  { template: "python-fastapi", keywords: ["fastapi", "python", "backend", "service", "api server"] },
+  { template: "express-api", keywords: ["express", "rest api", "rest", "node server", "api endpoint"] },
+  { template: "node-cli", keywords: ["cli", "command", "command-line", "terminal", "tool"] },
+];
+
+const DEFAULT_TEMPLATE = "node-cli";
+
+/** Derive a safe project name from a free-text spec. */
+function deriveName(spec) {
+  const cleaned = String(spec || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim();
+  const first = cleaned.split(/\s+/).filter(Boolean)[0] || "project";
+  const name = first.replace(/[^a-z0-9-]/g, "").slice(0, 40);
+  return name || "project";
+}
+
+/** Escape a keyword for use inside a RegExp. */
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Word-boundary match so short keywords (e.g. "ui") don't match inside words. */
+function matchesKeyword(text, keyword) {
+  return new RegExp(`\\b${escapeRegExp(keyword)}\\b`, "i").test(text);
+}
+
+/** Map a free-text spec to a template + variables (deterministic). */
+function analyzeSpec(spec, variables = {}) {
+  const text = String(spec || "");
+  let template = DEFAULT_TEMPLATE;
+  for (const rule of SPEC_TEMPLATE_RULES) {
+    if (rule.keywords.some((k) => matchesKeyword(text, k))) {
+      template = rule.template;
+      break;
+    }
+  }
+  return {
+    template,
+    variables: {
+      name: variables.name || deriveName(spec),
+      description: variables.description || String(spec || "").slice(0, 200),
+    },
+  };
+}
+
+/** Scaffold a full project from a free-text spec. */
+function scaffoldProject(spec, options = {}) {
+  const { template, variables } = analyzeSpec(spec, options.variables);
+  return generateProject(template, variables);
+}
+
 module.exports = {
   BUILTIN_TEMPLATES,
+  SPEC_TEMPLATE_RULES,
+  DEFAULT_TEMPLATE,
   generateProject,
   writeProjectToDisk,
   createProjectZip,
+  deriveName,
+  analyzeSpec,
+  scaffoldProject,
 };
