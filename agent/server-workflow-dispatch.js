@@ -176,8 +176,9 @@ async function runCodeGen(ctx) {
     generatedAt: new Date().toISOString(),
   };
 
-  // Optionally produce a zip.
+  // Optionally produce a zip and upload it to storage.
   let zip = null;
+  let zipDownloadUrl = null;
   if (ctx.outputZip) {
     const zipResult = await codeGen.createProjectZip(project);
     if (zipResult.ok) {
@@ -185,6 +186,14 @@ async function runCodeGen(ctx) {
         filename: zipResult.filename,
         sizeBytes: Math.round((zipResult.base64.length * 3) / 4),
       };
+      if (ctx.supabase && ctx.workspaceId) {
+        const stored = await storeDeliverable(ctx, {
+          filename: zipResult.filename,
+          base64: zipResult.base64,
+          contentType: "application/zip",
+        });
+        if (stored.ok) zipDownloadUrl = stored.downloadUrl;
+      }
     }
   }
 
@@ -224,21 +233,55 @@ async function runCodeGen(ctx) {
     },
     manifest,
     zip,
+    zipDownloadUrl,
     artifact,
   };
 }
 
-/** Document generation handler: structured content → .docx/.xlsx/.pdf (base64). */
+/** MIME type for a generated deliverable format. */
+function mimeFor(format) {
+  switch (format) {
+    case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    case "xlsx": return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    case "pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    case "pdf": return "application/pdf";
+    default: return "application/octet-stream";
+  }
+}
+
+/** Upload a generated deliverable (base64) to Supabase Storage; returns a signed URL. */
+async function storeDeliverable(ctx, { filename, base64, contentType }) {
+  if (!ctx.supabase || !ctx.workspaceId || !base64) return { ok: false };
+  const storage = require("./server-supabase");
+  const artifactId = CRYPTO.randomBytes(8).toString("hex");
+  const content = Buffer.from(base64, "base64");
+  const up = await storage.uploadArtifactFile(ctx.workspaceId, artifactId, filename, content, contentType, content.length);
+  if (!up.ok) return { ok: false, message: up.message };
+  const signed = await storage.getArtifactSignedUrl(ctx.workspaceId, artifactId, filename);
+  return { ok: true, artifactId, path: up.path, downloadUrl: signed.ok ? signed.url : null };
+}
+
+/** Document generation handler: structured content → .docx/.xlsx/.pdf/.pptx (base64 + storage URL). */
 async function runDocGen(ctx) {
-  const { format, title, sections, rows, sheetName } = ctx;
+  const { format, title, sections, rows, sheetName, slides } = ctx;
   if (!format || !title) {
     return { ok: false, message: "format and title are required", failureClassification: "invalid_input" };
   }
-  const result = await docGen.generateDeliverable({ format, title, sections, rows, sheetName });
+  const result = await docGen.generateDeliverable({ format, title, sections, rows, sheetName, slides });
   if (!result.ok) {
     return { ok: false, message: result.message, failureClassification: "invalid_input" };
   }
-  return result;
+  // Upload to storage when a repo seam + workspace are present.
+  let downloadUrl = null;
+  if (ctx.supabase && ctx.workspaceId) {
+    const stored = await storeDeliverable(ctx, {
+      filename: result.filename,
+      base64: result.base64,
+      contentType: mimeFor(result.format),
+    });
+    if (stored.ok) downloadUrl = stored.downloadUrl;
+  }
+  return { ...result, downloadUrl };
 }
 
 async function dispatch(workflowId, ctx) {
