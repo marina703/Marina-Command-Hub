@@ -242,10 +242,10 @@ const TOOL_REGISTRY = {
     purpose: "Template-based code/project generation (Node CLI, React, FastAPI, Express). Requires template configuration.",
     riskTier: "moderate",
     approvalPolicy: "plan_approval",
-    availability: AVAILABILITY.PLANNED,
-    availabilityState: AVAILABILITY.PLANNED,
+    availability: AVAILABILITY.AVAILABLE,
+    availabilityState: AVAILABILITY.AVAILABLE,
     featureFlag: "CODE_GEN_ENABLED",
-    executable: false,
+    executable: true,
     redactionFields: [],
     inputSchema: {
       type: "object",

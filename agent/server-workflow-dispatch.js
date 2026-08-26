@@ -22,6 +22,7 @@ const safe = require("./server-safe-workflow");
 const planner = require("./server-planner");
 const search = require("./server-web-search");
 const research = require("./server-research-planner");
+const codeGen = require("./server-code-gen");
 const registry = require("./server-tool-registry");
 
 const REGISTERED_WORKFLOWS = {
@@ -51,6 +52,15 @@ const REGISTERED_WORKFLOWS = {
     provider: "research",
     providerLabel: "Research Planner",
     description: "Decompose a query into parallel subtasks, search + extract, and synthesize into a structured research-report artifact.",
+  },
+  "code-generation": {
+    id: "code-generation",
+    label: "Code Generation",
+    availability: "available",
+    riskTier: "moderate",
+    provider: "code-generation",
+    providerLabel: "Template Scaffolder",
+    description: "Generate a template-based project (Node CLI, React, FastAPI, Express) as a project artifact with a manifest, optionally zipped.",
   },
 };
 
@@ -122,6 +132,83 @@ async function runResearch(ctx) {
   return result;
 }
 
+/** Code generation handler: template scaffold → project artifact + manifest (optionally zip). */
+async function runCodeGen(ctx) {
+  const { template, variables } = ctx;
+  if (!template || !variables || !variables.name) {
+    return { ok: false, message: "template and variables.name are required", failureClassification: "invalid_input" };
+  }
+
+  const project = codeGen.generateProject(template, variables);
+  if (!project.ok) {
+    return { ok: false, message: project.message, failureClassification: "invalid_input" };
+  }
+
+  // Build a manifest (file list, sizes, template, variables, provenance).
+  const manifest = {
+    projectName: project.projectName,
+    template: project.template,
+    fileCount: project.fileCount,
+    files: project.files.map((f) => ({
+      path: f.path,
+      sizeBytes: Buffer.byteLength(f.content, "utf8"),
+    })),
+    variables,
+    generatedAt: new Date().toISOString(),
+  };
+
+  // Optionally produce a zip.
+  let zip = null;
+  if (ctx.outputZip) {
+    const zipResult = await codeGen.createProjectZip(project);
+    if (zipResult.ok) {
+      zip = {
+        filename: zipResult.filename,
+        sizeBytes: Math.round((zipResult.base64.length * 3) / 4),
+      };
+    }
+  }
+
+  // Persist a project artifact with the manifest when a repo seam is present.
+  let artifact = null;
+  if (ctx.supabase && ctx.workspaceId) {
+    try {
+      const content = JSON.stringify(manifest, null, 2);
+      const contentHash = CRYPTO.createHash("sha256").update(content).digest("hex");
+      const artifactResult = await ctx.supabase.createArtifactInDb({
+        workspaceId: ctx.workspaceId,
+        taskId: ctx.taskId || null,
+        runId: ctx.runId || null,
+        type: "project",
+        displayName: `Project: ${project.projectName}`,
+        mediaType: "application/json",
+        storageRef: "",
+        contentHash,
+        sizeBytes: Buffer.byteLength(content, "utf8"),
+        state: "draft",
+        summary: `Generated ${project.fileCount} files from template "${project.template}".`,
+        provenance: { workflow: "code-generation", template, variables, projectName: project.projectName },
+      });
+      artifact = artifactResult.ok ? artifactResult.artifact : null;
+    } catch (err) {
+      artifact = null;
+    }
+  }
+
+  return {
+    ok: true,
+    project: {
+      template: project.template,
+      projectName: project.projectName,
+      fileCount: project.fileCount,
+      files: project.files,
+    },
+    manifest,
+    zip,
+    artifact,
+  };
+}
+
 async function dispatch(workflowId, ctx) {
   // Defense in depth: cross-check the registry, not only the
   // workflow id. The dispatcher must never reach a handler
@@ -149,6 +236,8 @@ async function dispatch(workflowId, ctx) {
       return runWebSearch(ctx);
     case "research":
       return runResearch(ctx);
+    case "code-generation":
+      return runCodeGen(ctx);
     default:
       return {
         ok: false,

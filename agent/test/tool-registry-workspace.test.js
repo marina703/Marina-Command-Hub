@@ -21,10 +21,11 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
-// Enable the research feature flags so web-search and research are
-// dispatchable in this suite (they are fail-closed until these are set).
+// Enable the research/code-gen feature flags so web-search, research, and
+// code-generation are dispatchable in this suite (fail-closed until set).
 process.env.WEB_SEARCH_ENABLED = "1";
 process.env.RESEARCH_ENABLED = "1";
+process.env.CODE_GEN_ENABLED = "1";
 
 const {
   validateToolInput,
@@ -66,11 +67,11 @@ test("listTools returns the truthful registry", () => {
   assert.ok(names.includes("deployment-execute"));
 });
 
-test("safe-internal, web-search, and research are dispatchable; everything else is honest", () => {
+test("safe-internal, web-search, research, and code-generation are dispatchable; everything else is honest", () => {
   const dispatchable = listDispatchableTools();
   const names = dispatchable.map((t) => t.name).sort();
-  assert.deepEqual(names, ["research", "safe-internal", "web-search"]);
-  const EXECUTABLE = new Set(["safe-internal", "web-search", "research"]);
+  assert.deepEqual(names, ["code-generation", "research", "safe-internal", "web-search"]);
+  const EXECUTABLE = new Set(["safe-internal", "web-search", "research", "code-generation"]);
   for (const t of listTools()) {
     if (EXECUTABLE.has(t.name)) {
       assert.equal(t.executable, true, t.name + " must be executable");
