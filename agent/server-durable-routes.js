@@ -1253,6 +1253,47 @@ async function handleDurable(req, res, url) {
     return json(res, 200, { ok: true, filename: result.filename, base64: result.base64, sections: result.sections });
   }
 
+  async function agentBusRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+
+    const bus = require("./server-agent-bus");
+    const { action } = body;
+    if (!action) return json(res, 400, { ok: false, message: "action is required" });
+
+    let result;
+    switch (action) {
+      case "register":
+        result = bus.registerAgent({ id: body.id, capabilities: body.capabilities });
+        break;
+      case "find":
+        result = bus.findAgents(body.capability);
+        break;
+      case "list":
+        result = bus.listAgents();
+        break;
+      case "publish":
+        result = bus.publish({ topic: body.topic, from: body.from, to: body.to, payload: body.payload });
+        break;
+      case "delegate":
+        result = bus.delegate({ from: body.from, to: body.to, task: body.task, context: body.context, expectedOutput: body.expectedOutput });
+        break;
+      case "messages":
+        result = bus.listMessages(body.topic);
+        break;
+      case "delegations":
+        result = bus.listDelegations();
+        break;
+      case "stats":
+        result = { ok: true, ...bus.stats() };
+        break;
+      default:
+        return json(res, 400, { ok: false, message: `Unknown agent-bus action: ${action}` });
+    }
+    return json(res, result.ok ? 200 : 400, result);
+  }
+
   async function sandboxRoute(req, res) {
     const body = await readJson(req);
     const auth = await requireWorkspace(req, body.workspaceId);
@@ -1387,6 +1428,8 @@ async function handleDurable(req, res, url) {
     return emailInboundRoute(req, res);
   if (path === "/api/durable/slack/deliverable" && method === "POST")
     return slackDeliverableRoute(req, res);
+  if (path === "/api/durable/agents" && method === "POST")
+    return agentBusRoute(req, res);
   if (path === "/api/durable/sandbox" && method === "POST")
     return sandboxRoute(req, res);
 

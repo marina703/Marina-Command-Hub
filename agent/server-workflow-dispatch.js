@@ -25,6 +25,7 @@ const research = require("./server-research-planner");
 const codeGen = require("./server-code-gen");
 const docGen = require("./server-doc-gen");
 const memory = require("./server-graph-memory");
+const agentBus = require("./server-agent-bus");
 const registry = require("./server-tool-registry");
 
 const REGISTERED_WORKFLOWS = {
@@ -81,6 +82,15 @@ const REGISTERED_WORKFLOWS = {
     provider: "memory",
     providerLabel: "Graph Memory",
     description: "Persistent graph memory: remember entities/relations, recall by query, reason over paths.",
+  },
+  "agent-bus": {
+    id: "agent-bus",
+    label: "Agent Bus",
+    availability: "available",
+    riskTier: "low",
+    provider: "agent-bus",
+    providerLabel: "Agent Bus",
+    description: "Cross-agent coordination: registry, topic message bus, and delegation.",
   },
 };
 
@@ -312,6 +322,32 @@ async function runMemory(ctx) {
   }
 }
 
+/** Agent bus handler: register / find / list / publish / delegate / stats. */
+async function runAgentBus(ctx) {
+  const { action } = ctx;
+  if (!action) return { ok: false, message: "action is required", failureClassification: "invalid_input" };
+  switch (action) {
+    case "register":
+      return agentBus.registerAgent({ id: ctx.id, capabilities: ctx.capabilities });
+    case "find":
+      return agentBus.findAgents(ctx.capability);
+    case "list":
+      return agentBus.listAgents();
+    case "publish":
+      return agentBus.publish({ topic: ctx.topic, from: ctx.from, to: ctx.to, payload: ctx.payload });
+    case "delegate":
+      return agentBus.delegate({ from: ctx.from, to: ctx.to, task: ctx.task, context: ctx.context, expectedOutput: ctx.expectedOutput });
+    case "messages":
+      return agentBus.listMessages(ctx.topic);
+    case "delegations":
+      return agentBus.listDelegations();
+    case "stats":
+      return { ok: true, ...agentBus.stats() };
+    default:
+      return { ok: false, message: `Unknown agent-bus action: ${action}`, failureClassification: "invalid_input" };
+  }
+}
+
 async function dispatch(workflowId, ctx) {
   // Defense in depth: cross-check the registry, not only the
   // workflow id. The dispatcher must never reach a handler
@@ -345,6 +381,8 @@ async function dispatch(workflowId, ctx) {
       return runDocGen(ctx);
     case "memory":
       return runMemory(ctx);
+    case "agent-bus":
+      return runAgentBus(ctx);
     default:
       return {
         ok: false,
