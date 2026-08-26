@@ -143,7 +143,11 @@ async function processTask(service, deps, task, actorId) {
   // A plan is effectively approved if its status is "approved" or if it was
   // previously approved and later superseded (has approved_at set).
   function isEffectivelyApproved(plan) {
-    return plan && (plan.status === "approved" || (plan.approved_at && plan.status === "superseded"));
+    return (
+      plan &&
+      (plan.status === "approved" ||
+        (plan.approved_at && plan.status === "superseded"))
+    );
   }
 
   if (isEffectivelyApproved(latest.plan)) {

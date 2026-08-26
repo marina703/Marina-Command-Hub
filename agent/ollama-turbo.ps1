@@ -73,7 +73,7 @@ if (-not $ready) {
     exit 1
 }
 
-Write-Host "[OK] Ollama API active at http://localhost:11434" -ForegroundColor Green
+Write-Host "[OK] Ollama API active at http://localhost:11434/" -ForegroundColor Green
 Write-Host "     Logs: $outLog  /  $errLog" -ForegroundColor DarkGray
 
 if ($Bench) {

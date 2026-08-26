@@ -1054,6 +1054,106 @@ async function handleDurable(req, res, url) {
   const method = req.method;
   const path = url.pathname;
 
+  // Phase 4A: Research + Coding Tool Routes
+
+  async function webSearchRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+    
+    const { query, maxResults, provider } = body;
+    if (!query || typeof query !== "string") {
+      return json(res, 400, { ok: false, message: "query is required" });
+    }
+    
+    const search = require("./server-web-search");
+    const result = await search.searchWithFallback(query, { maxResults, provider });
+    
+    if (!result.ok) {
+      return json(res, 500, { ok: false, message: result.message });
+    }
+    
+    return json(res, 200, { ok: true, ...result });
+  }
+
+  async function researchRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+    
+    const { query, maxSubtasks, depth, format, concurrency } = body;
+    if (!query || typeof query !== "string") {
+      return json(res, 400, { ok: false, message: "query is required" });
+    }
+    
+    const research = require("./server-research-planner");
+    const service = getServiceClient();
+    if (!service) return json(res, 503, { ok: false, code: "not_configured", message: "Supabase is not configured" });
+    
+    const result = await research.executeResearch(service, query, {
+      workspaceId: body.workspaceId,
+      taskId: body.taskId,
+      maxSubtasks,
+      depth,
+      format,
+      concurrency,
+    });
+    
+    if (!result.ok) {
+      return json(res, 500, { ok: false, message: result.message });
+    }
+    
+    return json(res, 200, { ok: true, ...result });
+  }
+
+  async function codeGenRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+    
+    const { template, variables, outputZip } = body;
+    if (!template || !variables || !variables.name) {
+      return json(res, 400, { ok: false, message: "template and variables.name are required" });
+    }
+    
+    const codeGen = require("./server-code-gen");
+    const result = codeGen.generateProject(template, variables);
+    
+    if (!result.ok) {
+      return json(res, 400, { ok: false, message: result.message });
+    }
+    
+    if (outputZip) {
+      const zipResult = await codeGen.createProjectZip(result);
+      if (!zipResult.ok) {
+        return json(res, 500, { ok: false, message: zipResult.message });
+      }
+      return json(res, 200, { ok: true, zip: zipResult.base64, filename: zipResult.filename });
+    }
+    
+    return json(res, 200, { ok: true, ...result });
+  }
+
+  async function sandboxRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+    
+    const { language, code, timeoutMs, env } = body;
+    if (!language || !code) {
+      return json(res, 400, { ok: false, message: "language and code are required" });
+    }
+    
+    const sandbox = require("./server-sandbox");
+    const result = await sandbox.executeCode(language, code, { timeoutMs, env });
+    
+    if (!result.ok) {
+      return json(res, 500, { ok: false, message: result.message || result.error });
+    }
+    
+    return json(res, 200, { ok: true, ...result });
+  }
+
   // Tasks
   if (path === "/api/durable/tasks" && method === "GET")
     return listTasks(req, res, url);
@@ -1153,6 +1253,16 @@ async function handleDurable(req, res, url) {
     return queueState(req, res, url);
   }
 
+  // Phase 4A: Research + Coding Tools
+  if (path === "/api/durable/web-search" && method === "POST")
+    return webSearchRoute(req, res);
+  if (path === "/api/durable/research" && method === "POST")
+    return researchRoute(req, res);
+  if (path === "/api/durable/code-gen" && method === "POST")
+    return codeGenRoute(req, res);
+  if (path === "/api/durable/sandbox" && method === "POST")
+    return sandboxRoute(req, res);
+
   return json(res, 404, {
     ok: false,
     message: "Durable route not found",
@@ -1186,4 +1296,8 @@ module.exports = {
   listAuditEvents,
   listWorkflows,
   runAutopilotCycleRoute,
+  webSearchRoute,
+  researchRoute,
+  codeGenRoute,
+  sandboxRoute,
 };

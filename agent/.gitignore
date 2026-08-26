@@ -48,3 +48,4 @@ dist/
 **/*.key
 **/secrets.json
 **/credentials.json
+.vercel
