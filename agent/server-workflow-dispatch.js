@@ -23,6 +23,7 @@ const planner = require("./server-planner");
 const search = require("./server-web-search");
 const research = require("./server-research-planner");
 const codeGen = require("./server-code-gen");
+const docGen = require("./server-doc-gen");
 const registry = require("./server-tool-registry");
 
 const REGISTERED_WORKFLOWS = {
@@ -61,6 +62,15 @@ const REGISTERED_WORKFLOWS = {
     provider: "code-generation",
     providerLabel: "Template Scaffolder",
     description: "Generate a template-based project (Node CLI, React, FastAPI, Express) as a project artifact with a manifest, optionally zipped.",
+  },
+  "document-generation": {
+    id: "document-generation",
+    label: "Document Generation",
+    availability: "available",
+    riskTier: "low",
+    provider: "document-generation",
+    providerLabel: "Doc Gen",
+    description: "Generate .docx, .xlsx, or .pdf deliverables from structured content. Safe, in-memory, no shell.",
   },
 };
 
@@ -218,6 +228,19 @@ async function runCodeGen(ctx) {
   };
 }
 
+/** Document generation handler: structured content → .docx/.xlsx/.pdf (base64). */
+async function runDocGen(ctx) {
+  const { format, title, sections, rows, sheetName } = ctx;
+  if (!format || !title) {
+    return { ok: false, message: "format and title are required", failureClassification: "invalid_input" };
+  }
+  const result = await docGen.generateDeliverable({ format, title, sections, rows, sheetName });
+  if (!result.ok) {
+    return { ok: false, message: result.message, failureClassification: "invalid_input" };
+  }
+  return result;
+}
+
 async function dispatch(workflowId, ctx) {
   // Defense in depth: cross-check the registry, not only the
   // workflow id. The dispatcher must never reach a handler
@@ -247,6 +270,8 @@ async function dispatch(workflowId, ctx) {
       return runResearch(ctx);
     case "code-generation":
       return runCodeGen(ctx);
+    case "document-generation":
+      return runDocGen(ctx);
     default:
       return {
         ok: false,

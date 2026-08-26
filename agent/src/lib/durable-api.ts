@@ -468,4 +468,36 @@ export async function generateCodeProject(
   });
 }
 
+export interface DocGenResult {
+  ok: boolean;
+  format?: string;
+  filename?: string;
+  sizeBytes?: number;
+  base64?: string;
+}
+
+export interface DocSection {
+  heading?: string;
+  body?: string;
+}
+
+/** Generate a .docx/.xlsx/.pdf deliverable from structured content. */
+export async function generateDocument(
+  workspaceId: string,
+  session: Session | null,
+  options: {
+    format: "docx" | "xlsx" | "pdf";
+    title: string;
+    sections?: DocSection[];
+    rows?: (string | number)[][];
+    sheetName?: string;
+  }
+) {
+  return request<DocGenResult>("/api/durable/doc-gen", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, ...options }),
+    session,
+  });
+}
+
 export { getSessionOrThrow };

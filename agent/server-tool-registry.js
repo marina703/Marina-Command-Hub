@@ -264,6 +264,40 @@ const TOOL_REGISTRY = {
       },
     },
   },
+  "document-generation": {
+    name: "document-generation",
+    version: "1.0.0",
+    handlerId: "document-generation",
+    purpose: "Generate .docx, .xlsx, or .pdf deliverables from structured content. Safe, in-memory, no shell.",
+    riskTier: "low",
+    approvalPolicy: "plan_approval",
+    availability: AVAILABILITY.AVAILABLE,
+    availabilityState: AVAILABILITY.AVAILABLE,
+    featureFlag: "DOC_GEN_ENABLED",
+    executable: true,
+    redactionFields: [],
+    inputSchema: {
+      type: "object",
+      required: ["format", "title"],
+      additionalProperties: false,
+      properties: {
+        format: { type: "string", enum: ["docx", "xlsx", "pdf"] },
+        title: { type: "string", maxLength: 200 },
+        sheetName: { type: "string", maxLength: 80 },
+        sections: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              heading: { type: "string" },
+              body: { type: "string" },
+            },
+          },
+        },
+        rows: { type: "array", items: { type: "array" } },
+      },
+    },
+  },
   "sandbox": {
     name: "sandbox",
     version: "1.0.0",

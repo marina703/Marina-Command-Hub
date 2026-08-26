@@ -59,9 +59,9 @@ test("durable routes: workflow registry lists exactly one workflow", async () =>
   assert.equal(res.statusCode, 200);
   const body = parseJson(res);
   assert.equal(body.ok, true);
-  assert.equal(body.workflows.length, 4);
+  assert.equal(body.workflows.length, 5);
   const ids = body.workflows.map((w) => w.id).sort();
-  assert.deepEqual(ids, ["code-generation", "research", "safe-internal", "web-search"]);
+  assert.deepEqual(ids, ["code-generation", "document-generation", "research", "safe-internal", "web-search"]);
 });
 
 test("durable routes: unknown route returns 404", async () => {

@@ -23,4 +23,5 @@ export { TaskDetail } from "./TaskDetail";
 export { IntegrationsPanel } from "./IntegrationsPanel";
 export { OperationsShelf } from "./OperationsShelf";
 export { CodeGenPanel } from "./CodeGenPanel";
+export { DocumentGenPanel } from "./DocumentGenPanel";
 export { LoginPage } from "./LoginPage";

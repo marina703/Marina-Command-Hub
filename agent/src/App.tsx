@@ -30,6 +30,7 @@ import {
   OperationsShelf,
   TaskDetail,
   CodeGenPanel,
+  DocumentGenPanel,
 } from "@/components/dashboard";
 import type { ViewId } from "@/components/dashboard/Sidebar";
 import type { ChatMessage } from "@/components/dashboard/AssistantConsole";
@@ -532,6 +533,15 @@ export default function App() {
           {activeView === "codegen" && (
             <ErrorBoundary label="Code Generation">
               <CodeGenPanel
+                workspaceId={auth.session ? "default" : null}
+                session={auth.session}
+              />
+            </ErrorBoundary>
+          )}
+
+          {activeView === "docgen" && (
+            <ErrorBoundary label="Document Generation">
+              <DocumentGenPanel
                 workspaceId={auth.session ? "default" : null}
                 session={auth.session}
               />

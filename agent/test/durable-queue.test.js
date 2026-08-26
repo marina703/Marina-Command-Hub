@@ -552,8 +552,8 @@ test("local worker harness throws when called without the guard", async () => {
 
 // ── Tool registry invariants ─────────────────────────────────
 
-test("registry: only safe-internal, web-search, research, and code-generation have executable=true", () => {
-  const EXECUTABLE = new Set(["safe-internal", "web-search", "research", "code-generation"]);
+test("registry: only safe-internal, web-search, research, code-generation, and document-generation have executable=true", () => {
+  const EXECUTABLE = new Set(["safe-internal", "web-search", "research", "code-generation", "document-generation"]);
   for (const t of registry.listTools()) {
     if (EXECUTABLE.has(t.name)) {
       assert.equal(t.executable, true, t.name + " must be executable");

@@ -1162,6 +1162,25 @@ async function handleDurable(req, res, url) {
     });
   }
 
+  async function docGenRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+
+    const { format, title, sections, rows, sheetName } = body;
+    if (!format || !title) {
+      return json(res, 400, { ok: false, message: "format and title are required" });
+    }
+
+    const docGen = require("./server-doc-gen");
+    const result = await docGen.generateDeliverable({ format, title, sections, rows, sheetName });
+    if (!result.ok) {
+      return json(res, 400, { ok: false, message: result.message });
+    }
+
+    return json(res, 200, result);
+  }
+
   async function sandboxRoute(req, res) {
     const body = await readJson(req);
     const auth = await requireWorkspace(req, body.workspaceId);
@@ -1288,6 +1307,8 @@ async function handleDurable(req, res, url) {
     return researchRoute(req, res);
   if (path === "/api/durable/code-gen" && method === "POST")
     return codeGenRoute(req, res);
+  if (path === "/api/durable/doc-gen" && method === "POST")
+    return docGenRoute(req, res);
   if (path === "/api/durable/sandbox" && method === "POST")
     return sandboxRoute(req, res);
 
