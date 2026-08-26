@@ -578,6 +578,36 @@ async function createProjectZip(project) {
     zip.file(file.path, file.content);
   }
 
+  // Add a README + manifest so the export is self-documenting and portable.
+  const readme = [
+    `# ${project.projectName}`,
+    "",
+    `Template: ${project.template}`,
+    `Files: ${project.fileCount}`,
+    "",
+    "## Contents",
+    ...project.files.map((f) => `- ${f.path}`),
+    "",
+  ].join("\n");
+  zip.file("README.md", readme);
+  zip.file(
+    "manifest.json",
+    JSON.stringify(
+      {
+        projectName: project.projectName,
+        template: project.template,
+        fileCount: project.fileCount,
+        files: project.files.map((f) => ({
+          path: f.path,
+          sizeBytes: Buffer.byteLength(f.content, "utf8"),
+        })),
+        exportedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
+
   const base64 = await zip.generateAsync({ type: "base64", compression: "DEFLATE" });
   
   return {

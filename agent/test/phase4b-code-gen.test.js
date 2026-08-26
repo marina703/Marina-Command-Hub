@@ -89,3 +89,14 @@ test("dispatch code-generation with a spec auto-selects template", async () => {
   assert.ok(result.manifest.files.length > 0);
   assert.ok(result.zip);
 });
+
+test("createProjectZip includes README and manifest for portability", async () => {
+  const project = codeGen.generateProject("node-cli", { name: "demo" });
+  const zip = await codeGen.createProjectZip(project);
+  const JSZIP = require("jszip");
+  const loaded = await JSZIP.loadAsync(Buffer.from(zip.base64, "base64"));
+  assert.ok(loaded.file("README.md"));
+  assert.ok(loaded.file("manifest.json"));
+  const manifest = JSON.parse(await loaded.file("manifest.json").async("string"));
+  assert.equal(manifest.projectName, "demo");
+});
