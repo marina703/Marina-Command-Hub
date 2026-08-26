@@ -127,7 +127,7 @@ export function Sidebar({ activeView, onNavigate, onLock, onSignOut, data, user 
   const quickStats = data?.quickStats ?? [];
 
   return (
-    <aside className="sticky top-3 flex h-[calc(100vh-1.5rem)] w-56 shrink-0 flex-col gap-3.5 rounded-2xl border border-border-muted bg-surface-2/95 p-3 shadow-card backdrop-blur-xl">
+    <aside className="sticky top-3 flex h-[calc(100vh-1.5rem)] w-56 shrink-0 flex-col gap-3.5 rounded-2xl border border-border-strong/40 bg-surface-2/75 p-3 shadow-card backdrop-blur-xl">
       {/* Brand */}
       <div className="flex items-center gap-2.5 px-1 pt-0.5">
         <div className="grid h-8 w-8 place-items-center rounded-xl border border-accent-primary/50 bg-gradient-to-br from-accent-primary/20 to-accent-secondary/20 font-extrabold text-accent-primary shadow-glow-primary">

@@ -60,7 +60,7 @@ export function Panel({
     <div
       id={id}
       className={cn(
-        "flex flex-col rounded-2xl border border-border-muted bg-surface-2/95 p-4 shadow-card",
+        "flex flex-col rounded-2xl border border-border-strong/30 bg-surface-2/75 p-4 shadow-card backdrop-blur-md transition-all duration-200 hover:border-accent-primary/40",
         className,
       )}
     >

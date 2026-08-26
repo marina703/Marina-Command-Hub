@@ -18,7 +18,7 @@ export function TopNav({
   online,
 }: TopNavProps) {
   return (
-    <header className="sticky top-3 z-20 mb-4 flex items-center justify-between gap-4 rounded-2xl border border-border-muted bg-surface-2/90 px-4 py-3 shadow-card backdrop-blur-xl">
+    <header className="sticky top-3 z-20 mb-4 flex items-center justify-between gap-4 rounded-2xl border border-border-strong/40 bg-surface-2/75 px-4 py-3 shadow-card backdrop-blur-xl">
       <div className="min-w-0">
         <p className="mb-0.5 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-accent-primary">
           Marina AI Command Hub
