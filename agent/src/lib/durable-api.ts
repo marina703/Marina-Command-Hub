@@ -506,4 +506,54 @@ export async function generateDocument(
   });
 }
 
+// ── Agent tools: memory / email / slack / agent-bus ──
+
+export async function memoryAction(
+  workspaceId: string,
+  session: Session | null,
+  body: Record<string, unknown>
+) {
+  return request<{ ok: boolean; [k: string]: unknown }>("/api/durable/memory", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, ...body }),
+    session,
+  });
+}
+
+export async function emailInbound(
+  workspaceId: string,
+  session: Session | null,
+  body: { from?: string; subject?: string; body?: string }
+) {
+  return request<{ ok: boolean; task?: unknown; plan?: unknown }>("/api/durable/email/inbound", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, ...body }),
+    session,
+  });
+}
+
+export async function slackDeliverable(
+  workspaceId: string,
+  session: Session | null,
+  body: { messages: { user?: string; text?: string }[]; type: string; format?: string }
+) {
+  return request<{ ok: boolean; filename?: string; base64?: string }>("/api/durable/slack/deliverable", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, ...body }),
+    session,
+  });
+}
+
+export async function agentBusAction(
+  workspaceId: string,
+  session: Session | null,
+  body: Record<string, unknown>
+) {
+  return request<{ ok: boolean; [k: string]: unknown }>("/api/durable/agents", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, ...body }),
+    session,
+  });
+}
+
 export { getSessionOrThrow };

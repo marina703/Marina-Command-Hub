@@ -31,6 +31,7 @@ import {
   TaskDetail,
   CodeGenPanel,
   DocumentGenPanel,
+  AgentToolsPanel,
 } from "@/components/dashboard";
 import type { ViewId } from "@/components/dashboard/Sidebar";
 import type { ChatMessage } from "@/components/dashboard/AssistantConsole";
@@ -542,6 +543,15 @@ export default function App() {
           {activeView === "docgen" && (
             <ErrorBoundary label="Document Generation">
               <DocumentGenPanel
+                workspaceId={auth.session ? "default" : null}
+                session={auth.session}
+              />
+            </ErrorBoundary>
+          )}
+
+          {activeView === "agents" && (
+            <ErrorBoundary label="Agent Tools">
+              <AgentToolsPanel
                 workspaceId={auth.session ? "default" : null}
                 session={auth.session}
               />
