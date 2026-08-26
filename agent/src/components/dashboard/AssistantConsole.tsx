@@ -85,7 +85,7 @@ export function AssistantConsole({ onMessage, onRefresh }: AssistantConsoleProps
       />
 
       {/* Playbook bar */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-border-muted bg-white/2 p-2.5">
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-border-muted bg-surface-2/60 backdrop-blur-md p-2.5">
         <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-accent-primary">
           <Zap className="h-3.5 w-3.5" /> Playbook:
         </span>
@@ -111,7 +111,7 @@ export function AssistantConsole({ onMessage, onRefresh }: AssistantConsoleProps
           <button
             key={label}
             onClick={() => handleSend(label)}
-            className="rounded-lg border border-border-muted bg-white/2 px-2.5 py-1.5 text-xs text-text-primary transition-all hover:-translate-y-px hover:border-accent-primary/40 hover:shadow-glow-primary"
+            className="rounded-lg border border-border-muted bg-surface-2/60 backdrop-blur-md px-2.5 py-1.5 text-xs text-text-primary transition-all hover:-translate-y-px hover:border-accent-primary/40 hover:shadow-glow-primary"
           >
             {label}
           </button>
