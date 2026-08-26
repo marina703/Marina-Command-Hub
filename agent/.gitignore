@@ -5,6 +5,9 @@ logs/
 # Local runtime state (superseded by Supabase; regenerated on server start)
 dashboard-state.json
 
+# Knowledge graph memory store (runtime data)
+memory-graph.json
+
 # Runtime-generated reports (playbook outputs)
 tmp/
 
@@ -48,3 +51,4 @@ dist/
 **/*.key
 **/secrets.json
 **/credentials.json
+.vercel

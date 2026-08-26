@@ -1054,6 +1054,280 @@ async function handleDurable(req, res, url) {
   const method = req.method;
   const path = url.pathname;
 
+  // Phase 4A: Research + Coding Tool Routes
+
+  async function webSearchRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+    
+    const { query, maxResults, provider } = body;
+    if (!query || typeof query !== "string") {
+      return json(res, 400, { ok: false, message: "query is required" });
+    }
+    
+    const search = require("./server-web-search");
+    const result = await search.searchWithFallback(query, { maxResults, provider });
+    
+    if (!result.ok) {
+      return json(res, 500, { ok: false, message: result.message });
+    }
+    
+    return json(res, 200, { ok: true, ...result });
+  }
+
+  async function researchRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+    
+    const { query, maxSubtasks, depth, format, concurrency } = body;
+    if (!query || typeof query !== "string") {
+      return json(res, 400, { ok: false, message: "query is required" });
+    }
+    
+    const research = require("./server-research-planner");
+    const service = getServiceClient();
+    if (!service) return json(res, 503, { ok: false, code: "not_configured", message: "Supabase is not configured" });
+    
+    const result = await research.executeResearch(service, query, {
+      workspaceId: body.workspaceId,
+      taskId: body.taskId,
+      maxSubtasks,
+      depth,
+      format,
+      concurrency,
+    });
+    
+    if (!result.ok) {
+      return json(res, 500, { ok: false, message: result.message });
+    }
+    
+    return json(res, 200, { ok: true, ...result });
+  }
+
+  async function codeGenRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+    
+    const { template, variables, outputZip, spec } = body;
+    const codeGen = require("./server-code-gen");
+
+    let result;
+    if (spec) {
+      // Spec-driven scaffolding: auto-select template + derive variables.
+      const analyzed = codeGen.analyzeSpec(spec, variables);
+      result = codeGen.generateProject(analyzed.template, analyzed.variables);
+    } else {
+      if (!template || !variables || !variables.name) {
+        return json(res, 400, { ok: false, message: "spec OR template + variables.name are required" });
+      }
+      result = codeGen.generateProject(template, variables);
+    }
+
+    if (!result.ok) {
+      return json(res, 400, { ok: false, message: result.message });
+    }
+
+    // Build a manifest (file list + sizes) for the UI.
+    const manifest = {
+      projectName: result.projectName,
+      template: result.template,
+      fileCount: result.fileCount,
+      files: result.files.map((f) => ({
+        path: f.path,
+        sizeBytes: Buffer.byteLength(f.content, "utf8"),
+      })),
+    };
+
+    if (outputZip) {
+      const zipResult = await codeGen.createProjectZip(result);
+      if (!zipResult.ok) {
+        return json(res, 500, { ok: false, message: zipResult.message });
+      }
+      return json(res, 200, {
+        ok: true,
+        project: { template: result.template, projectName: result.projectName, fileCount: result.fileCount },
+        manifest,
+        zip: zipResult.base64,
+        filename: zipResult.filename,
+      });
+    }
+
+    return json(res, 200, {
+      ok: true,
+      project: { template: result.template, projectName: result.projectName, fileCount: result.fileCount, files: result.files },
+      manifest,
+    });
+  }
+
+  async function docGenRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+
+    const { format, title, sections, rows, sheetName, slides } = body;
+    if (!format || !title) {
+      return json(res, 400, { ok: false, message: "format and title are required" });
+    }
+
+    const docGen = require("./server-doc-gen");
+    const result = await docGen.generateDeliverable({ format, title, sections, rows, sheetName, slides });
+    if (!result.ok) {
+      return json(res, 400, { ok: false, message: result.message });
+    }
+
+    return json(res, 200, result);
+  }
+
+  async function memoryRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+
+    const memory = require("./server-graph-memory");
+    const { action } = body;
+    if (!action) return json(res, 400, { ok: false, message: "action is required" });
+
+    let result;
+    switch (action) {
+      case "remember":
+        result = memory.remember({ id: body.id, type: body.type, label: body.label, props: body.props, relations: body.relations });
+        break;
+      case "recall":
+        result = memory.recall({ query: body.query, depth: body.depth, limit: body.limit });
+        break;
+      case "reason":
+        result = memory.reason({ start: body.start, end: body.end, maxHops: body.maxHops });
+        break;
+      case "stats":
+        result = { ok: true, ...memory.stats() };
+        break;
+      default:
+        return json(res, 400, { ok: false, message: `Unknown memory action: ${action}` });
+    }
+    return json(res, result.ok ? 200 : 400, result);
+  }
+
+  async function emailInboundRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+
+    const { from, subject, body: emailBody } = body;
+    if (!subject && !emailBody) {
+      return json(res, 400, { ok: false, message: "subject or body is required" });
+    }
+
+    const emailAgent = require("./server-email-agent");
+    const client = getServiceClient();
+    if (!client) {
+      return json(res, 503, { ok: false, code: "not_configured", message: "Supabase is not configured" });
+    }
+
+    const result = await emailAgent.processEmail(client, {
+      workspaceId: body.workspaceId,
+      from,
+      subject,
+      body: emailBody,
+      actorId: auth.user ? auth.user.id : null,
+    });
+    if (!result.ok) return json(res, 400, { ok: false, message: result.message });
+    return json(res, 200, { ok: true, task: result.task, plan: result.plan });
+  }
+
+  async function slackDeliverableRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+
+    const { messages, type, format, title } = body;
+    if (!type || !Array.isArray(messages)) {
+      return json(res, 400, { ok: false, message: "type and messages (array) are required" });
+    }
+
+    const slackAgent = require("./server-slack-agent");
+    const result = await slackAgent.generateDeliverable({ messages, type, format, title });
+    if (!result.ok) return json(res, 400, { ok: false, message: result.message });
+    return json(res, 200, { ok: true, filename: result.filename, base64: result.base64, sections: result.sections });
+  }
+
+  async function agentBusRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+
+    const bus = require("./server-agent-bus");
+    const { action } = body;
+    if (!action) return json(res, 400, { ok: false, message: "action is required" });
+
+    let result;
+    switch (action) {
+      case "register":
+        result = bus.registerAgent({ id: body.id, capabilities: body.capabilities });
+        break;
+      case "find":
+        result = bus.findAgents(body.capability);
+        break;
+      case "list":
+        result = bus.listAgents();
+        break;
+      case "publish":
+        result = bus.publish({ topic: body.topic, from: body.from, to: body.to, payload: body.payload });
+        break;
+      case "delegate":
+        result = bus.delegate({ from: body.from, to: body.to, task: body.task, context: body.context, expectedOutput: body.expectedOutput });
+        break;
+      case "messages":
+        result = bus.listMessages(body.topic);
+        break;
+      case "delegations":
+        result = bus.listDelegations();
+        break;
+      case "stats":
+        result = { ok: true, ...bus.stats() };
+        break;
+      default:
+        return json(res, 400, { ok: false, message: `Unknown agent-bus action: ${action}` });
+    }
+    return json(res, result.ok ? 200 : 400, result);
+  }
+
+  async function imageGenRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+
+    const { prompt, provider, size, n } = body;
+    if (!prompt) return json(res, 400, { ok: false, message: "prompt is required" });
+
+    const imageGen = require("./server-image-gen");
+    const result = await imageGen.generateImage({ prompt, provider, size, n });
+    if (!result.ok) return json(res, 503, { ok: false, code: "not_configured", message: result.message });
+    return json(res, 200, { ok: true, provider: result.provider, base64: result.base64 });
+  }
+
+  async function sandboxRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+    
+    const { language, code, timeoutMs, env } = body;
+    if (!language || !code) {
+      return json(res, 400, { ok: false, message: "language and code are required" });
+    }
+    
+    const sandbox = require("./server-sandbox");
+    const result = await sandbox.executeCode(language, code, { timeoutMs, env });
+    
+    if (!result.ok) {
+      return json(res, 500, { ok: false, message: result.message || result.error });
+    }
+    
+    return json(res, 200, { ok: true, ...result });
+  }
+
   // Tasks
   if (path === "/api/durable/tasks" && method === "GET")
     return listTasks(req, res, url);
@@ -1152,6 +1426,28 @@ async function handleDurable(req, res, url) {
   if (path === "/api/durable/queue/state" && method === "GET") {
     return queueState(req, res, url);
   }
+
+  // Phase 4A: Research + Coding Tools
+  if (path === "/api/durable/web-search" && method === "POST")
+    return webSearchRoute(req, res);
+  if (path === "/api/durable/research" && method === "POST")
+    return researchRoute(req, res);
+  if (path === "/api/durable/code-gen" && method === "POST")
+    return codeGenRoute(req, res);
+  if (path === "/api/durable/doc-gen" && method === "POST")
+    return docGenRoute(req, res);
+  if (path === "/api/durable/memory" && method === "POST")
+    return memoryRoute(req, res);
+  if (path === "/api/durable/email/inbound" && method === "POST")
+    return emailInboundRoute(req, res);
+  if (path === "/api/durable/slack/deliverable" && method === "POST")
+    return slackDeliverableRoute(req, res);
+  if (path === "/api/durable/agents" && method === "POST")
+    return agentBusRoute(req, res);
+  if (path === "/api/durable/image-gen" && method === "POST")
+    return imageGenRoute(req, res);
+  if (path === "/api/durable/sandbox" && method === "POST")
+    return sandboxRoute(req, res);
 
   return json(res, 404, {
     ok: false,

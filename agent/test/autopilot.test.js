@@ -165,7 +165,9 @@ function patchPlannerAllSafe(modify) {
   planner.generatePlanDraft = (task) => {
     const d = orig(task);
     // Always filter out the approval checkpoint step (not auto-eligible)
-    d.planDraft.steps = d.planDraft.steps.filter((s) => s.toolClass !== "approval");
+    d.planDraft.steps = d.planDraft.steps.filter(
+      (s) => s.toolClass !== "approval",
+    );
     if (modify) modify(d);
     d.payloadHash = planner.hashPayload({
       taskId: task.id,

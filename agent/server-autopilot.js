@@ -143,7 +143,11 @@ async function processTask(service, deps, task, actorId) {
   // A plan is effectively approved if its status is "approved" or if it was
   // previously approved and later superseded (has approved_at set).
   function isEffectivelyApproved(plan) {
-    return plan && (plan.status === "approved" || (plan.approved_at && plan.status === "superseded"));
+    return (
+      plan &&
+      (plan.status === "approved" ||
+        (plan.approved_at && plan.status === "superseded"))
+    );
   }
 
   if (isEffectivelyApproved(latest.plan)) {
@@ -195,7 +199,24 @@ async function processTask(service, deps, task, actorId) {
   }
 
   // 3. Generate a fresh draft (latest missing, rejected, or superseded).
-  const draft = planner.generatePlanDraft(task);
+  //    Phase 4C: enrich the plan with recalled memory context (self-improving).
+  let memoryContext = "";
+  try {
+    const mem = require("./server-graph-memory");
+    const recalled = mem.recall({ query: task.title || "", depth: 2, limit: 5 });
+    if (recalled.ok && recalled.results.length) {
+      memoryContext = recalled.results
+        .map((r) => `- ${r.node.label}${r.node.props && r.node.props.lesson ? `: ${r.node.props.lesson}` : ""}`)
+        .join("\n");
+    }
+  } catch {
+    /* memory is optional; never block planning */
+  }
+  const enrichedTask = memoryContext
+    ? { ...task, instructions: `${task.instructions || ""}\n\n[Memory context]\n${memoryContext}` }
+    : task;
+
+  const draft = planner.generatePlanDraft(enrichedTask);
   if (!draft.ok)
     return {
       taskId,

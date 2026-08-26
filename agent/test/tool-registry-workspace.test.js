@@ -21,6 +21,16 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
+// Enable the research/code-gen feature flags so web-search, research, and
+// code-generation are dispatchable in this suite (fail-closed until set).
+process.env.WEB_SEARCH_ENABLED = "1";
+process.env.RESEARCH_ENABLED = "1";
+process.env.CODE_GEN_ENABLED = "1";
+process.env.DOC_GEN_ENABLED = "1";
+process.env.MEMORY_ENABLED = "1";
+process.env.AGENT_BUS_ENABLED = "1";
+process.env.IMAGE_GEN_ENABLED = "1";
+
 const {
   validateToolInput,
   getToolDefinition,
@@ -61,13 +71,14 @@ test("listTools returns the truthful registry", () => {
   assert.ok(names.includes("deployment-execute"));
 });
 
-test("only safe-internal is dispatchable; everything else is honest", () => {
+test("safe-internal, web-search, research, code-generation, document-generation, memory, agent-bus, and image-generation are dispatchable; everything else is honest", () => {
   const dispatchable = listDispatchableTools();
-  assert.equal(dispatchable.length, 1);
-  assert.equal(dispatchable[0].name, "safe-internal");
+  const names = dispatchable.map((t) => t.name).sort();
+  assert.deepEqual(names, ["agent-bus", "code-generation", "document-generation", "image-generation", "memory", "research", "safe-internal", "web-search"]);
+  const EXECUTABLE = new Set(["safe-internal", "web-search", "research", "code-generation", "document-generation", "memory", "agent-bus", "image-generation"]);
   for (const t of listTools()) {
-    if (t.name === "safe-internal") {
-      assert.equal(t.executable, true);
+    if (EXECUTABLE.has(t.name)) {
+      assert.equal(t.executable, true, t.name + " must be executable");
     } else {
       // Either planned / not_configured / blocked — never executable.
       assert.notEqual(t.executable, true, t.name + " must not be executable");

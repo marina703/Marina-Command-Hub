@@ -13,6 +13,9 @@ import {
   Settings2,
   Wrench,
   LogOut,
+  Code2,
+  FileText,
+  Network,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DashboardState } from "@/types";
@@ -30,7 +33,10 @@ export type ViewId =
   | "system"
   | "security"
   | "integrations"
-  | "automations";
+  | "automations"
+  | "codegen"
+  | "docgen"
+  | "agents";
 
 export interface SidebarProps {
   activeView: ViewId;
@@ -60,6 +66,9 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "assistant", label: "AI Assistant", icon: <Bot className="h-4 w-4" /> },
       { id: "tasks", label: "Task Hub", icon: <ListChecks className="h-4 w-4" /> },
       { id: "approvals", label: "Approvals", icon: <ShieldCheck className="h-4 w-4" /> },
+      { id: "codegen", label: "Code Generation", icon: <Code2 className="h-4 w-4" /> },
+      { id: "docgen", label: "Documents", icon: <FileText className="h-4 w-4" /> },
+      { id: "agents", label: "Agent Tools", icon: <Network className="h-4 w-4" /> },
     ],
   },
   {

@@ -425,4 +425,135 @@ export async function listDurableWorkflows() {
   });
 }
 
+export interface CodeGenFile {
+  path: string;
+  content: string;
+}
+
+export interface CodeGenManifest {
+  projectName: string;
+  template: string;
+  fileCount: number;
+  files: { path: string; sizeBytes: number }[];
+}
+
+export interface CodeGenResult {
+  ok: boolean;
+  project?: {
+    template: string;
+    projectName: string;
+    fileCount: number;
+    files?: CodeGenFile[];
+  };
+  manifest?: CodeGenManifest;
+  zip?: string; // base64 when outputZip=true
+  filename?: string;
+}
+
+/** Generate a project from a free-text spec (or template + variables). */
+export async function generateCodeProject(
+  workspaceId: string,
+  session: Session | null,
+  options: {
+    spec?: string;
+    template?: string;
+    variables?: Record<string, string>;
+    outputZip?: boolean;
+  } = {}
+) {
+  return request<CodeGenResult>("/api/durable/code-gen", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, ...options }),
+    session,
+  });
+}
+
+export interface DocGenResult {
+  ok: boolean;
+  format?: string;
+  filename?: string;
+  sizeBytes?: number;
+  base64?: string;
+}
+
+export interface DocSection {
+  heading?: string;
+  body?: string;
+}
+
+export interface DocSlide {
+  title?: string;
+  bullets?: string[];
+}
+
+/** Generate a .docx/.xlsx/.pdf/.pptx deliverable from structured content. */
+export async function generateDocument(
+  workspaceId: string,
+  session: Session | null,
+  options: {
+    format: "docx" | "xlsx" | "pdf" | "pptx";
+    title: string;
+    sections?: DocSection[];
+    rows?: (string | number)[][];
+    sheetName?: string;
+    slides?: DocSlide[];
+  }
+) {
+  return request<DocGenResult>("/api/durable/doc-gen", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, ...options }),
+    session,
+  });
+}
+
+// ── Agent tools: memory / email / slack / agent-bus ──
+
+export async function memoryAction(
+  workspaceId: string,
+  session: Session | null,
+  body: Record<string, unknown>
+) {
+  return request<{ ok: boolean; [k: string]: unknown }>("/api/durable/memory", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, ...body }),
+    session,
+  });
+}
+
+export async function emailInbound(
+  workspaceId: string,
+  session: Session | null,
+  body: { from?: string; subject?: string; body?: string }
+) {
+  return request<{ ok: boolean; task?: unknown; plan?: unknown }>("/api/durable/email/inbound", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, ...body }),
+    session,
+  });
+}
+
+export async function slackDeliverable(
+  workspaceId: string,
+  session: Session | null,
+  body: { messages: { user?: string; text?: string }[]; type: string; format?: string }
+) {
+  return request<{ ok: boolean; filename?: string; base64?: string }>("/api/durable/slack/deliverable", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, ...body }),
+    session,
+  });
+}
+
+export async function agentBusAction(
+  workspaceId: string,
+  session: Session | null,
+  body: Record<string, unknown>
+) {
+  return request<{ ok: boolean; [k: string]: unknown }>("/api/durable/agents", {
+    method: "POST",
+    body: JSON.stringify({ workspaceId, ...body }),
+    session,
+  });
+}
+
 export { getSessionOrThrow };

@@ -141,6 +141,10 @@ const ALLOWED_MIME_TYPES = new Set([
   "text/markdown", "text/plain", "text/csv", "application/json",
   "application/pdf", "image/png", "image/jpeg", "image/svg+xml",
   "image/webp", "application/zip",
+  // Office deliverables
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 ]);
 
 async function uploadArtifactFile(workspaceId, artifactId, filename, content, contentType, sizeBytes) {
