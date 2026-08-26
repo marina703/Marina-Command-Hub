@@ -26,6 +26,7 @@ const codeGen = require("./server-code-gen");
 const docGen = require("./server-doc-gen");
 const memory = require("./server-graph-memory");
 const agentBus = require("./server-agent-bus");
+const imageGen = require("./server-image-gen");
 const registry = require("./server-tool-registry");
 
 const REGISTERED_WORKFLOWS = {
@@ -91,6 +92,15 @@ const REGISTERED_WORKFLOWS = {
     provider: "agent-bus",
     providerLabel: "Agent Bus",
     description: "Cross-agent coordination: registry, topic message bus, and delegation.",
+  },
+  "image-generation": {
+    id: "image-generation",
+    label: "Image Generation",
+    availability: "available",
+    riskTier: "moderate",
+    provider: "image-generation",
+    providerLabel: "AI Design",
+    description: "Generate images from a prompt via a configured provider (OpenAI/Stability). Fail-closed until a key is set.",
   },
 };
 
@@ -348,6 +358,15 @@ async function runAgentBus(ctx) {
   }
 }
 
+/** Image generation handler: prompt -> provider image (fail-closed). */
+async function runImageGen(ctx) {
+  const result = await imageGen.generateImage({ prompt: ctx.prompt, provider: ctx.provider, size: ctx.size, n: ctx.n });
+  if (!result.ok) {
+    return { ok: false, message: result.message, failureClassification: "not_configured" };
+  }
+  return result;
+}
+
 async function dispatch(workflowId, ctx) {
   // Defense in depth: cross-check the registry, not only the
   // workflow id. The dispatcher must never reach a handler
@@ -383,6 +402,8 @@ async function dispatch(workflowId, ctx) {
       return runMemory(ctx);
     case "agent-bus":
       return runAgentBus(ctx);
+    case "image-generation":
+      return runImageGen(ctx);
     default:
       return {
         ok: false,

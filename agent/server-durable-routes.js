@@ -1294,6 +1294,20 @@ async function handleDurable(req, res, url) {
     return json(res, result.ok ? 200 : 400, result);
   }
 
+  async function imageGenRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+
+    const { prompt, provider, size, n } = body;
+    if (!prompt) return json(res, 400, { ok: false, message: "prompt is required" });
+
+    const imageGen = require("./server-image-gen");
+    const result = await imageGen.generateImage({ prompt, provider, size, n });
+    if (!result.ok) return json(res, 503, { ok: false, code: "not_configured", message: result.message });
+    return json(res, 200, { ok: true, provider: result.provider, base64: result.base64 });
+  }
+
   async function sandboxRoute(req, res) {
     const body = await readJson(req);
     const auth = await requireWorkspace(req, body.workspaceId);
@@ -1430,6 +1444,8 @@ async function handleDurable(req, res, url) {
     return slackDeliverableRoute(req, res);
   if (path === "/api/durable/agents" && method === "POST")
     return agentBusRoute(req, res);
+  if (path === "/api/durable/image-gen" && method === "POST")
+    return imageGenRoute(req, res);
   if (path === "/api/durable/sandbox" && method === "POST")
     return sandboxRoute(req, res);
 

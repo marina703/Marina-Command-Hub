@@ -29,6 +29,7 @@ process.env.CODE_GEN_ENABLED = "1";
 process.env.DOC_GEN_ENABLED = "1";
 process.env.MEMORY_ENABLED = "1";
 process.env.AGENT_BUS_ENABLED = "1";
+process.env.IMAGE_GEN_ENABLED = "1";
 
 const {
   validateToolInput,
@@ -70,11 +71,11 @@ test("listTools returns the truthful registry", () => {
   assert.ok(names.includes("deployment-execute"));
 });
 
-test("safe-internal, web-search, research, code-generation, document-generation, memory, and agent-bus are dispatchable; everything else is honest", () => {
+test("safe-internal, web-search, research, code-generation, document-generation, memory, agent-bus, and image-generation are dispatchable; everything else is honest", () => {
   const dispatchable = listDispatchableTools();
   const names = dispatchable.map((t) => t.name).sort();
-  assert.deepEqual(names, ["agent-bus", "code-generation", "document-generation", "memory", "research", "safe-internal", "web-search"]);
-  const EXECUTABLE = new Set(["safe-internal", "web-search", "research", "code-generation", "document-generation", "memory", "agent-bus"]);
+  assert.deepEqual(names, ["agent-bus", "code-generation", "document-generation", "image-generation", "memory", "research", "safe-internal", "web-search"]);
+  const EXECUTABLE = new Set(["safe-internal", "web-search", "research", "code-generation", "document-generation", "memory", "agent-bus", "image-generation"]);
   for (const t of listTools()) {
     if (EXECUTABLE.has(t.name)) {
       assert.equal(t.executable, true, t.name + " must be executable");
