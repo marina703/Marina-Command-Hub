@@ -1210,6 +1210,33 @@ async function handleDurable(req, res, url) {
     return json(res, result.ok ? 200 : 400, result);
   }
 
+  async function emailInboundRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+
+    const { from, subject, body: emailBody } = body;
+    if (!subject && !emailBody) {
+      return json(res, 400, { ok: false, message: "subject or body is required" });
+    }
+
+    const emailAgent = require("./server-email-agent");
+    const client = getServiceClient();
+    if (!client) {
+      return json(res, 503, { ok: false, code: "not_configured", message: "Supabase is not configured" });
+    }
+
+    const result = await emailAgent.processEmail(client, {
+      workspaceId: body.workspaceId,
+      from,
+      subject,
+      body: emailBody,
+      actorId: auth.user ? auth.user.id : null,
+    });
+    if (!result.ok) return json(res, 400, { ok: false, message: result.message });
+    return json(res, 200, { ok: true, task: result.task, plan: result.plan });
+  }
+
   async function sandboxRoute(req, res) {
     const body = await readJson(req);
     const auth = await requireWorkspace(req, body.workspaceId);
@@ -1340,6 +1367,8 @@ async function handleDurable(req, res, url) {
     return docGenRoute(req, res);
   if (path === "/api/durable/memory" && method === "POST")
     return memoryRoute(req, res);
+  if (path === "/api/durable/email/inbound" && method === "POST")
+    return emailInboundRoute(req, res);
   if (path === "/api/durable/sandbox" && method === "POST")
     return sandboxRoute(req, res);
 
