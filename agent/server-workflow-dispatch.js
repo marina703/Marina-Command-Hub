@@ -24,6 +24,7 @@ const search = require("./server-web-search");
 const research = require("./server-research-planner");
 const codeGen = require("./server-code-gen");
 const docGen = require("./server-doc-gen");
+const memory = require("./server-graph-memory");
 const registry = require("./server-tool-registry");
 
 const REGISTERED_WORKFLOWS = {
@@ -71,6 +72,15 @@ const REGISTERED_WORKFLOWS = {
     provider: "document-generation",
     providerLabel: "Doc Gen",
     description: "Generate .docx, .xlsx, or .pdf deliverables from structured content. Safe, in-memory, no shell.",
+  },
+  memory: {
+    id: "memory",
+    label: "Knowledge Graph Memory",
+    availability: "available",
+    riskTier: "low",
+    provider: "memory",
+    providerLabel: "Graph Memory",
+    description: "Persistent graph memory: remember entities/relations, recall by query, reason over paths.",
   },
 };
 
@@ -284,6 +294,24 @@ async function runDocGen(ctx) {
   return { ...result, downloadUrl };
 }
 
+/** Knowledge graph memory handler: remember / recall / reason / stats. */
+async function runMemory(ctx) {
+  const { action } = ctx;
+  if (!action) return { ok: false, message: "action is required", failureClassification: "invalid_input" };
+  switch (action) {
+    case "remember":
+      return memory.remember({ id: ctx.id, type: ctx.type, label: ctx.label, props: ctx.props, relations: ctx.relations });
+    case "recall":
+      return memory.recall({ query: ctx.query, depth: ctx.depth, limit: ctx.limit });
+    case "reason":
+      return memory.reason({ start: ctx.start, end: ctx.end, maxHops: ctx.maxHops });
+    case "stats":
+      return { ok: true, ...memory.stats() };
+    default:
+      return { ok: false, message: `Unknown memory action: ${action}`, failureClassification: "invalid_input" };
+  }
+}
+
 async function dispatch(workflowId, ctx) {
   // Defense in depth: cross-check the registry, not only the
   // workflow id. The dispatcher must never reach a handler
@@ -315,6 +343,8 @@ async function dispatch(workflowId, ctx) {
       return runCodeGen(ctx);
     case "document-generation":
       return runDocGen(ctx);
+    case "memory":
+      return runMemory(ctx);
     default:
       return {
         ok: false,

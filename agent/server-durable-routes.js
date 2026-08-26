@@ -1181,6 +1181,35 @@ async function handleDurable(req, res, url) {
     return json(res, 200, result);
   }
 
+  async function memoryRoute(req, res) {
+    const body = await readJson(req);
+    const auth = await requireWorkspace(req, body.workspaceId);
+    if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
+
+    const memory = require("./server-graph-memory");
+    const { action } = body;
+    if (!action) return json(res, 400, { ok: false, message: "action is required" });
+
+    let result;
+    switch (action) {
+      case "remember":
+        result = memory.remember({ id: body.id, type: body.type, label: body.label, props: body.props, relations: body.relations });
+        break;
+      case "recall":
+        result = memory.recall({ query: body.query, depth: body.depth, limit: body.limit });
+        break;
+      case "reason":
+        result = memory.reason({ start: body.start, end: body.end, maxHops: body.maxHops });
+        break;
+      case "stats":
+        result = { ok: true, ...memory.stats() };
+        break;
+      default:
+        return json(res, 400, { ok: false, message: `Unknown memory action: ${action}` });
+    }
+    return json(res, result.ok ? 200 : 400, result);
+  }
+
   async function sandboxRoute(req, res) {
     const body = await readJson(req);
     const auth = await requireWorkspace(req, body.workspaceId);
@@ -1309,6 +1338,8 @@ async function handleDurable(req, res, url) {
     return codeGenRoute(req, res);
   if (path === "/api/durable/doc-gen" && method === "POST")
     return docGenRoute(req, res);
+  if (path === "/api/durable/memory" && method === "POST")
+    return memoryRoute(req, res);
   if (path === "/api/durable/sandbox" && method === "POST")
     return sandboxRoute(req, res);
 
