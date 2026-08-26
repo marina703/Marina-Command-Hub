@@ -1296,8 +1296,4 @@ module.exports = {
   listAuditEvents,
   listWorkflows,
   runAutopilotCycleRoute,
-  webSearchRoute,
-  researchRoute,
-  codeGenRoute,
-  sandboxRoute,
 };

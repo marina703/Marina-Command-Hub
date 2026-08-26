@@ -82,11 +82,11 @@ async function executeSubtask(
       maxResults: 10,
     });
 
-    if (!result.ok) {
+    if (!searchResult.ok) {
       return {
         ok: false,
         subtask,
-        error: result.message,
+        error: searchResult.message,
         durationMs: Date.now() - startTime,
       };
     }
@@ -95,9 +95,9 @@ async function executeSubtask(
     const artifactContent = JSON.stringify(
       {
         subtask,
-        results: result.results,
-        searchedAt: result.searchedAt,
-        provider: result.provider,
+        results: searchResult.results,
+        searchedAt: searchResult.searchedAt,
+        provider: searchResult.provider,
       },
       null,
       2,
@@ -112,8 +112,8 @@ async function executeSubtask(
     return {
       ok: true,
       subtask,
-      resultCount: result.resultCount,
-      results: result.results.slice(0, 5), // Top 5 for synthesis
+      resultCount: searchResult.resultCount,
+      results: searchResult.results.slice(0, 5), // Top 5 for synthesis
       artifactId,
       artifactPath,
       durationMs: Date.now() - startTime,

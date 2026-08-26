@@ -290,10 +290,12 @@ test("dispatcher: unknown workflow id is policy_blocked", async () => {
   assert.match(result.message, /Unknown workflow/);
 });
 
-test("dispatcher: only the safe-internal workflow is registered and dispatchable", async () => {
+test("dispatcher: safe-internal plus web-search and research workflows are registered", async () => {
   const dispatcher = require("../server-workflow-dispatch");
   const list = dispatcher.listWorkflows();
-  assert.equal(list.length, 1);
-  assert.equal(list[0].id, "safe-internal");
-  assert.equal(list[0].label, "Safe workflow preview");
+  assert.equal(list.length, 3);
+  const ids = list.map((w) => w.id).sort();
+  assert.deepEqual(ids, ["research", "safe-internal", "web-search"]);
+  const safeWf = list.find((w) => w.id === "safe-internal");
+  assert.equal(safeWf.label, "Safe workflow preview");
  });

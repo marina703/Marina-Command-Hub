@@ -186,7 +186,6 @@ const TOOL_REGISTRY = {
       },
     },
   },
-  },
   // ── Phase 4A: Research + Coding Tools (planned/not_configured) ──
   "web-search": {
     name: "web-search",
@@ -195,10 +194,10 @@ const TOOL_REGISTRY = {
     purpose: "Search the web via Tavily/SerpAPI/Exa with provider fallback. Requires API key configuration.",
     riskTier: "low",
     approvalPolicy: "plan_approval",
-    availability: AVAILABILITY.NOT_CONFIGURED,
-    availabilityState: AVAILABILITY.NOT_CONFIGURED,
+    availability: AVAILABILITY.AVAILABLE,
+    availabilityState: AVAILABILITY.AVAILABLE,
     featureFlag: "WEB_SEARCH_ENABLED",
-    executable: false,
+    executable: true,
     redactionFields: ["apiKey"],
     inputSchema: {
       type: "object",
@@ -218,10 +217,10 @@ const TOOL_REGISTRY = {
     purpose: "Deep research with parallel subtask decomposition, web search, and structured synthesis. Requires web-search to be configured.",
     riskTier: "moderate",
     approvalPolicy: "plan_approval",
-    availability: AVAILABILITY.PLANNED,
-    availabilityState: AVAILABILITY.PLANNED,
+    availability: AVAILABILITY.AVAILABLE,
+    availabilityState: AVAILABILITY.AVAILABLE,
     featureFlag: "RESEARCH_ENABLED",
-    executable: false,
+    executable: true,
     redactionFields: [],
     inputSchema: {
       type: "object",
