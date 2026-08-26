@@ -23,6 +23,7 @@
     "exceljs": "^4.4.0",
     "lucide-react": "^1.33.0",
     "pdfkit": "^0.20.1",
+    "pptxgenjs": "^4.0.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "sonner": "^2.0.8",

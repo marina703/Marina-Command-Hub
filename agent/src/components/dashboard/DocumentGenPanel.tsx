@@ -13,6 +13,7 @@ import type { Session } from "@supabase/supabase-js";
 import {
   generateDocument,
   type DocSection,
+  type DocSlide,
   type DocGenResult,
 } from "@/lib/durable-api";
 
@@ -25,6 +26,7 @@ const FORMATS = [
   { value: "docx", label: "Word (.docx)" },
   { value: "pdf", label: "PDF (.pdf)" },
   { value: "xlsx", label: "Excel (.xlsx)" },
+  { value: "pptx", label: "Slides (.pptx)" },
 ];
 
 /** Parse free text into sections: lines starting with "## " become headings. */
@@ -53,9 +55,27 @@ function parseRows(text: string): (string | number)[][] {
     .map((line) => line.split(/\t|\|/).map((c) => c.trim()));
 }
 
+/** Parse free text into slides: "## Title" starts a slide, "- item" is a bullet. */
+function parseSlides(text: string): DocSlide[] {
+  const slides: DocSlide[] = [];
+  let current: DocSlide = {};
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (/^##\s+/.test(line)) {
+      if (current.title || (current.bullets && current.bullets.length)) slides.push(current);
+      current = { title: line.replace(/^##\s+/, ""), bullets: [] };
+    } else if (/^-\s+/.test(line)) {
+      current.bullets = current.bullets || [];
+      current.bullets.push(line.replace(/^-\s+/, ""));
+    }
+  }
+  if (current.title || (current.bullets && current.bullets.length)) slides.push(current);
+  return slides;
+}
+
 /** Natural-language document generation — .docx/.pdf/.xlsx deliverables. */
 export function DocumentGenPanel({ workspaceId, session }: DocumentGenPanelProps) {
-  const [format, setFormat] = useState<"docx" | "xlsx" | "pdf">("docx");
+  const [format, setFormat] = useState<"docx" | "xlsx" | "pdf" | "pptx">("docx");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [sheetName, setSheetName] = useState("Sheet1");
@@ -76,12 +96,14 @@ export function DocumentGenPanel({ workspaceId, session }: DocumentGenPanelProps
     try {
       const sections = parseSections(content);
       const rows = parseRows(content);
+      const slides = parseSlides(content);
       const res = await generateDocument(workspaceId, session, {
         format,
         title: title.trim(),
         sections,
         rows,
         sheetName,
+        slides,
       });
       if (!res.ok) throw new Error("Generation failed");
       setResult(res);
@@ -137,7 +159,9 @@ export function DocumentGenPanel({ workspaceId, session }: DocumentGenPanelProps
           placeholder={
             format === "xlsx"
               ? "Paste rows, one per line, separated by tabs or |\nItem\tCost\nHosting\t100\nDesign\t250"
-              : "Write the document content. Use '## Heading' for section headings.\n\n## Overview\nThis is the executive summary."
+              : format === "pptx"
+                ? "Use '## Title' for each slide and '- item' for bullets.\n\n## Overview\n- Problem statement\n- Proposed solution"
+                : "Write the document content. Use '## Heading' for section headings.\n\n## Overview\nThis is the executive summary."
           }
           rows={6}
           className="w-full resize-none rounded-xl border border-border-muted bg-surface-3 px-3 py-2 text-sm text-text-primary placeholder:text-text-muted outline-none focus:ring-2 focus:ring-accent-primary/60"

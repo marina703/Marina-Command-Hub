@@ -481,16 +481,22 @@ export interface DocSection {
   body?: string;
 }
 
-/** Generate a .docx/.xlsx/.pdf deliverable from structured content. */
+export interface DocSlide {
+  title?: string;
+  bullets?: string[];
+}
+
+/** Generate a .docx/.xlsx/.pdf/.pptx deliverable from structured content. */
 export async function generateDocument(
   workspaceId: string,
   session: Session | null,
   options: {
-    format: "docx" | "xlsx" | "pdf";
+    format: "docx" | "xlsx" | "pdf" | "pptx";
     title: string;
     sections?: DocSection[];
     rows?: (string | number)[][];
     sheetName?: string;
+    slides?: DocSlide[];
   }
 ) {
   return request<DocGenResult>("/api/durable/doc-gen", {

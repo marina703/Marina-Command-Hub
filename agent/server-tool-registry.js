@@ -281,7 +281,7 @@ const TOOL_REGISTRY = {
       required: ["format", "title"],
       additionalProperties: false,
       properties: {
-        format: { type: "string", enum: ["docx", "xlsx", "pdf"] },
+        format: { type: "string", enum: ["docx", "xlsx", "pdf", "pptx"] },
         title: { type: "string", maxLength: 200 },
         sheetName: { type: "string", maxLength: 80 },
         sections: {
@@ -295,6 +295,16 @@ const TOOL_REGISTRY = {
           },
         },
         rows: { type: "array", items: { type: "array" } },
+        slides: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              bullets: { type: "array", items: { type: "string" } },
+            },
+          },
+        },
       },
     },
   },

@@ -10,8 +10,9 @@
 const { Document, Packer, Paragraph, TextRun, HeadingLevel } = require("docx");
 const ExcelJS = require("exceljs");
 const PDFDocument = require("pdfkit");
+const PptxGenJS = require("pptxgenjs");
 
-const FORMATS = ["docx", "xlsx", "pdf"];
+const FORMATS = ["docx", "xlsx", "pdf", "pptx"];
 
 /** Build a .docx buffer from a title + sections. */
 async function buildDocx({ title, sections = [] }) {
@@ -44,6 +45,30 @@ async function buildXlsx({ sheetName = "Sheet1", rows = [] }) {
   return wb.xlsx.writeBuffer();
 }
 
+/** Build a .pptx buffer from a title + slides. */
+function buildPptx({ title = "Presentation", slides = [] }) {
+  const pres = new PptxGenJS();
+  pres.defineLayout({ name: "WIDE", width: 13.33, height: 7.5 });
+  pres.layout = "WIDE";
+
+  // Title slide
+  const titleSlide = pres.addSlide();
+  titleSlide.background = { color: "0D0F12" };
+  titleSlide.addText(title, { x: 0.6, y: 2.6, w: 12, h: 1.4, fontSize: 40, bold: true, color: "F8F9FA", align: "center" });
+
+  for (const slide of slides) {
+    const s = pres.addSlide();
+    s.background = { color: "111318" };
+    if (slide.title) {
+      s.addText(slide.title, { x: 0.6, y: 0.4, w: 12, h: 0.8, fontSize: 26, bold: true, color: "00F5FF" });
+    }
+    const bullets = (slide.bullets || []).map((b, i) => ({ text: b, bullet: true, color: i === 0 ? "F8F9FA" : "A0A4AB" }));
+    s.addText(bullets, { x: 0.6, y: 1.4, w: 12, h: 5.4, fontSize: 18, valign: "top" });
+  }
+
+  return pres.write({ outputType: "base64" });
+}
+
 /** Build a .pdf buffer from a title + sections. */
 function buildPdf({ title = "Document", sections = [] }) {
   return new Promise((resolve, reject) => {
@@ -69,9 +94,9 @@ function buildPdf({ title = "Document", sections = [] }) {
 }
 
 /** Generate a deliverable in the requested format. Returns { ok, base64, filename }. */
-async function generateDeliverable({ format, title, sections = [], rows = [], sheetName }) {
+async function generateDeliverable({ format, title, sections = [], rows = [], sheetName, slides = [] }) {
   if (!FORMATS.includes(format)) {
-    return { ok: false, message: `Unsupported format: ${format}. Use docx, xlsx, or pdf.` };
+    return { ok: false, message: `Unsupported format: ${format}. Use docx, xlsx, pdf, or pptx.` };
   }
 
   let buffer;
@@ -83,6 +108,9 @@ async function generateDeliverable({ format, title, sections = [], rows = [], sh
     } else if (format === "xlsx") {
       buffer = await buildXlsx({ sheetName, rows });
       filename = `${slugify(title || sheetName || "data")}.xlsx`;
+    } else if (format === "pptx") {
+      buffer = await buildPptx({ title, slides });
+      filename = `${slugify(title)}.pptx`;
     } else {
       buffer = await buildPdf({ title, sections });
       filename = `${slugify(title)}.pdf`;
@@ -113,6 +141,7 @@ module.exports = {
   buildDocx,
   buildXlsx,
   buildPdf,
+  buildPptx,
   generateDeliverable,
   slugify,
 };

@@ -74,3 +74,18 @@ test("dispatch document-generation rejects missing format", async () => {
   assert.equal(r.ok, false);
   assert.equal(r.failureClassification, "invalid_input");
 });
+
+test("generateDeliverable produces a .pptx deck", async () => {
+  const r = await docGen.generateDeliverable({
+    format: "pptx",
+    title: "Pitch",
+    slides: [
+      { title: "Overview", bullets: ["Problem", "Solution"] },
+      { title: "Next Steps", bullets: ["Ship", "Scale"] },
+    ],
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.filename, "pitch.pptx");
+  const buf = Buffer.from(r.base64, "base64");
+  assert.equal(buf.toString("utf8", 0, 2), "PK"); // pptx is a ZIP
+});

@@ -1167,13 +1167,13 @@ async function handleDurable(req, res, url) {
     const auth = await requireWorkspace(req, body.workspaceId);
     if (!auth.ok) return json(res, auth.status, { ok: false, message: auth.error });
 
-    const { format, title, sections, rows, sheetName } = body;
+    const { format, title, sections, rows, sheetName, slides } = body;
     if (!format || !title) {
       return json(res, 400, { ok: false, message: "format and title are required" });
     }
 
     const docGen = require("./server-doc-gen");
-    const result = await docGen.generateDeliverable({ format, title, sections, rows, sheetName });
+    const result = await docGen.generateDeliverable({ format, title, sections, rows, sheetName, slides });
     if (!result.ok) {
       return json(res, 400, { ok: false, message: result.message });
     }
