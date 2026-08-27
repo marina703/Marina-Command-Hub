@@ -32,6 +32,7 @@ import {
   CodeGenPanel,
   DocumentGenPanel,
   AgentToolsPanel,
+  CommandHubShell,
 } from "@/components/dashboard";
 import type { ViewId } from "@/components/dashboard/Sidebar";
 import type { ChatMessage } from "@/components/dashboard/AssistantConsole";
@@ -74,7 +75,7 @@ export default function App() {
   void _workspace; // Used by workspace hook for session-based fetching
 
   const { data, loading, error, refresh } = useDashboard();
-  const [activeView, setActiveView] = useState<ViewId>("dashboard");
+  const [activeView, setActiveView] = useState<ViewId>("home");
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -290,6 +291,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-surface-1 text-text-primary">
+      {activeView === "home" ? (
+        <div className="mx-auto max-w-[1600px] p-3 sm:p-4">
+          <CommandHubShell
+            onNavigate={setActiveView}
+            onOpenFullDashboard={() => setActiveView("dashboard")}
+          />
+        </div>
+      ) : (
       <div className="mx-auto flex max-w-[1600px] gap-4 p-3 sm:p-4">
         <ErrorBoundary label="Sidebar">
           <Sidebar
@@ -581,6 +590,7 @@ export default function App() {
           )}
         </main>
       </div>
+      )}
 
       <ErrorBoundary label="Command palette">
         <CommandPalette

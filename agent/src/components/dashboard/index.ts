@@ -25,4 +25,5 @@ export { OperationsShelf } from "./OperationsShelf";
 export { CodeGenPanel } from "./CodeGenPanel";
 export { DocumentGenPanel } from "./DocumentGenPanel";
 export { AgentToolsPanel } from "./AgentToolsPanel";
+export { CommandHubShell } from "./CommandHubShell";
 export { LoginPage } from "./LoginPage";
