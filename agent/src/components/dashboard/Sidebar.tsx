@@ -22,6 +22,7 @@ import type { DashboardState } from "@/types";
 import type { User } from "@supabase/supabase-js";
 
 export type ViewId =
+  | "home"
   | "dashboard"
   | "assistant"
   | "tasks"
