@@ -294,8 +294,8 @@ export default function App() {
       {activeView === "home" ? (
         <div className="mx-auto max-w-[1600px] p-3 sm:p-4">
           <CommandHubShell
+            onNavigate={setActiveView}
             onOpenFullDashboard={() => setActiveView("dashboard")}
-            onOpenTools={() => setActiveView("agents")}
           />
         </div>
       ) : (

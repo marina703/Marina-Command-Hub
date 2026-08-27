@@ -2,15 +2,12 @@ import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Home,
-  Briefcase,
   Sparkles,
   Database,
   FileText,
   Zap,
   Puzzle,
   Settings,
-  Building2,
-  ChevronDown,
   Send,
   Paperclip,
   BarChart3,
@@ -18,82 +15,96 @@ import {
   Minus,
   ArrowUpRight,
   Sparkle,
-  Mail,
-  Megaphone,
-  ClipboardList,
-  Users,
+  Code2,
+  Network,
+  ListChecks,
+  ShieldCheck,
   LayoutDashboard,
+  HeartPulse,
+  Cpu,
 } from "lucide-react";
 import { sendChat } from "@/lib/api";
+import type { ViewId } from "@/components/dashboard/Sidebar";
 
 /* ────────────────────────────────────────────────────────────
    Command Hub — Blended UI (obsidian command center)
    Left rail · Center workspace · Right "COMMAND AI" panel
+   All tools wired to real Command Hub views. No mock data.
    ──────────────────────────────────────────────────────────── */
 
-const CATEGORIES = ["Retail", "Agency", "Finance", "Healthcare", "Services"];
-
-const TOOLS = [
+const TOOLS: {
+  id: string;
+  title: string;
+  desc: string;
+  icon: typeof Code2;
+  view: ViewId;
+}[] = [
   {
-    id: "email",
-    title: "DRAFT EMAIL",
-    desc: "Create professional, on-brand emails in seconds.",
-    icon: Mail,
-    prompt: "Draft a professional email for my business.",
+    id: "codegen",
+    title: "CODE GENERATION",
+    desc: "Scaffold projects and generate code from a spec.",
+    icon: Code2,
+    view: "codegen",
   },
   {
-    id: "quote",
-    title: "BUILD QUOTE",
-    desc: "Generate accurate, branded quotes instantly.",
+    id: "docgen",
+    title: "DOCUMENTS",
+    desc: "Create .docx, .xlsx, .pdf and slide decks.",
     icon: FileText,
-    prompt: "Build a detailed quote for a client project.",
+    view: "docgen",
   },
   {
-    id: "campaign",
-    title: "PLAN CAMPAIGN",
-    desc: "Strategize and launch high-impact campaigns.",
-    icon: Megaphone,
-    prompt: "Plan a high-impact marketing campaign.",
+    id: "agents",
+    title: "AGENT TOOLS",
+    desc: "Memory, email, Slack, image-gen and agent bus.",
+    icon: Network,
+    view: "agents",
   },
   {
-    id: "meeting",
-    title: "SUMMARIZE MEETING",
-    desc: "Extract key takeaways and action items.",
-    icon: ClipboardList,
-    prompt: "Summarize the meeting and list key action items.",
+    id: "tasks",
+    title: "TASK HUB",
+    desc: "Plan, queue and track autonomous runs.",
+    icon: ListChecks,
+    view: "tasks",
   },
   {
-    id: "leads",
-    title: "TRACK LEADS",
-    desc: "Monitor leads and follow-ups in real time.",
-    icon: Users,
-    prompt: "Track my leads and suggest follow-ups.",
+    id: "approvals",
+    title: "APPROVALS",
+    desc: "Review and approve high-risk actions.",
+    icon: ShieldCheck,
+    view: "approvals",
   },
   {
-    id: "report",
-    title: "GENERATE REPORT",
-    desc: "Turn data into clear, actionable reports.",
-    icon: BarChart3,
-    prompt: "Generate a clear, actionable business report.",
+    id: "integrations",
+    title: "INTEGRATIONS",
+    desc: "Connect tools, providers and services.",
+    icon: Puzzle,
+    view: "integrations",
   },
 ];
 
-const NAV = [
-  { id: "home", label: "Home", icon: Home },
-  { id: "business", label: "Business", icon: Briefcase },
-  { id: "tools", label: "AI Tools", icon: Sparkles },
-  { id: "data", label: "Data", icon: Database },
-  { id: "reports", label: "Reports", icon: FileText },
-  { id: "automations", label: "Automations", icon: Zap },
-  { id: "integrations", label: "Integrations", icon: Puzzle },
-  { id: "settings", label: "Settings", icon: Settings },
+const NAV: {
+  id: string;
+  label: string;
+  icon: typeof Home;
+  view?: ViewId;
+}[] = [
+  { id: "home", label: "Home", icon: Home, view: "home" },
+  { id: "tools", label: "AI Tools", icon: Sparkles, view: "agents" },
+  { id: "data", label: "Data", icon: Database, view: "dashboard" },
+  { id: "reports", label: "Reports", icon: FileText, view: "docgen" },
+  { id: "automations", label: "Automations", icon: Zap, view: "automations" },
+  { id: "integrations", label: "Integrations", icon: Puzzle, view: "integrations" },
+  { id: "models", label: "LLM Hub", icon: Cpu, view: "models" },
+  { id: "system", label: "System", icon: HeartPulse, view: "system" },
+  { id: "settings", label: "Settings", icon: Settings, view: "security" },
 ];
 
 const SUGGESTED = [
-  "Write a follow-up email",
-  "Create a Q2 marketing plan",
-  "Analyze lead performance",
-  "Summarize this week",
+  "Scaffold a new project",
+  "Create a document",
+  "Run an agent task",
+  "Summarize my workspace",
 ];
 
 interface ChatMsg {
@@ -103,15 +114,14 @@ interface ChatMsg {
 }
 
 export interface CommandHubShellProps {
+  onNavigate: (view: ViewId) => void;
   onOpenFullDashboard: () => void;
-  onOpenTools: () => void;
 }
 
 export function CommandHubShell({
+  onNavigate,
   onOpenFullDashboard,
-  onOpenTools,
 }: CommandHubShellProps) {
-  const [category, setCategory] = useState(CATEGORIES[0]);
   const [activeNav, setActiveNav] = useState("home");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -168,54 +178,17 @@ export function CommandHubShell({
     [sending, scrollToBottom],
   );
 
-  const handleTool = (tool: (typeof TOOLS)[number]) => {
-    setChatOpen(true);
-    void runChat(`${tool.prompt} (business category: ${category})`);
-  };
-
   const renderHome = () => (
     <div className="flex flex-col gap-6">
       {/* Heading */}
       <div className="relative">
         <div className="pointer-events-none absolute inset-0 -z-10 opacity-40 [background:linear-gradient(rgba(0,214,208,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(0,214,208,0.06)_1px,transparent_1px)] [background-size:44px_44px]" />
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-extrabold uppercase tracking-wide text-text-primary sm:text-4xl">
-              Your Business, In One Place
-            </h1>
-            <p className="mt-1 text-xs font-medium uppercase tracking-[0.2em] text-text-secondary">
-              AI command center for growing businesses
-            </p>
-          </div>
-          <button className="flex items-center gap-2 rounded-lg border border-border-muted bg-surface-3 px-3 py-2 text-sm text-text-primary transition-colors hover:border-accent-primary/40">
-            <Building2 className="h-4 w-4 text-accent-primary" />
-            <span>Acme Partners</span>
-            <ChevronDown className="h-4 w-4 text-text-muted" />
-          </button>
-        </div>
-      </div>
-
-      {/* Category selector */}
-      <div className="flex flex-wrap items-center gap-1 rounded-xl border border-border-muted bg-surface-3/70 p-1.5">
-        {CATEGORIES.map((c) => {
-          const active = c === category;
-          return (
-            <button
-              key={c}
-              onClick={() => setCategory(c)}
-              className={`relative flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${
-                active
-                  ? "bg-surface-4 text-accent-primary shadow-glow-primary"
-                  : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              {c}
-              {active && (
-                <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-accent-primary" />
-              )}
-            </button>
-          );
-        })}
+        <h1 className="text-3xl font-extrabold uppercase tracking-wide text-text-primary sm:text-4xl">
+          Your Command Hub, In One Place
+        </h1>
+        <p className="mt-1 text-xs font-medium uppercase tracking-[0.2em] text-text-secondary">
+          AI command center for your workflows
+        </p>
       </div>
 
       {/* One-click tools */}
@@ -232,7 +205,7 @@ export function CommandHubShell({
             return (
               <button
                 key={tool.id}
-                onClick={() => handleTool(tool)}
+                onClick={() => onNavigate(tool.view)}
                 className="group flex flex-col gap-3 rounded-xl border border-border-muted bg-surface-3 p-4 text-left transition-all hover:border-accent-primary/40 hover:shadow-glow-primary"
               >
                 <div className="flex items-start justify-between">
@@ -297,25 +270,6 @@ export function CommandHubShell({
     </div>
   );
 
-  const renderPlaceholder = (label: string) => (
-    <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 rounded-2xl border border-border-muted bg-surface-3/50 p-10 text-center">
-      <Sparkles className="h-8 w-8 text-accent-primary" />
-      <h2 className="text-lg font-bold uppercase tracking-wide text-text-primary">
-        {label}
-      </h2>
-      <p className="max-w-sm text-sm text-text-secondary">
-        This section is part of the Command Hub. Use the one-click tools or the
-        AI assistant to get things done.
-      </p>
-      <button
-        onClick={() => setActiveNav("home")}
-        className="mt-2 rounded-lg border border-accent-primary/40 bg-accent-primary/10 px-4 py-2 text-sm font-semibold text-accent-primary hover:bg-accent-primary/20"
-      >
-        Back to Home
-      </button>
-    </div>
-  );
-
   return (
     <div className="flex min-h-[calc(100vh-2rem)] gap-4">
       {/* Left navigation rail */}
@@ -343,7 +297,7 @@ export function CommandHubShell({
                 key={item.id}
                 onClick={() => {
                   setActiveNav(item.id);
-                  if (item.id === "tools") onOpenTools();
+                  if (item.view && item.view !== "home") onNavigate(item.view);
                 }}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   active
@@ -359,10 +313,7 @@ export function CommandHubShell({
         </nav>
 
         <div className="mt-auto rounded-lg border border-border-muted bg-surface-3 p-3">
-          <div className="text-xs font-bold uppercase tracking-wider text-text-primary">
-            Pro
-          </div>
-          <div className="mt-1 flex items-center gap-1.5 text-[0.7rem] text-text-secondary">
+          <div className="flex items-center gap-1.5 text-[0.7rem] text-text-secondary">
             <span className="h-1.5 w-1.5 rounded-full bg-status-success" />
             All systems active
           </div>
@@ -370,13 +321,7 @@ export function CommandHubShell({
       </aside>
 
       {/* Center workspace */}
-      <main className="min-w-0 flex-1">
-        {activeNav === "home" ? (
-          renderHome()
-        ) : (
-          renderPlaceholder(NAV.find((n) => n.id === activeNav)?.label ?? "")
-        )}
-      </main>
+      <main className="min-w-0 flex-1">{renderHome()}</main>
 
       {/* Right COMMAND AI panel */}
       {chatOpen && (
@@ -389,7 +334,7 @@ export function CommandHubShell({
                   Command AI
                 </div>
                 <div className="text-[0.65rem] text-text-secondary">
-                  Your AI co-pilot for business execution.
+                  Your AI co-pilot for getting things done.
                 </div>
               </div>
             </div>
@@ -408,7 +353,7 @@ export function CommandHubShell({
           >
             {messages.length === 0 && (
               <div className="rounded-xl border border-border-muted bg-surface-3 p-3 text-sm text-text-secondary">
-                Good morning. Here's what's happening with your business today.
+                Ask anything or pick a tool to get started.
               </div>
             )}
             {messages.map((m) => (
