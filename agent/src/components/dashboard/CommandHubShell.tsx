@@ -38,6 +38,7 @@ const TOOLS: {
   desc: string;
   icon: typeof Code2;
   view: ViewId;
+  tag: string;
 }[] = [
   {
     id: "codegen",
@@ -45,6 +46,7 @@ const TOOLS: {
     desc: "Scaffold projects and generate code from a spec.",
     icon: Code2,
     view: "codegen",
+    tag: "Build",
   },
   {
     id: "docgen",
@@ -52,6 +54,7 @@ const TOOLS: {
     desc: "Create .docx, .xlsx, .pdf and slide decks.",
     icon: FileText,
     view: "docgen",
+    tag: "Create",
   },
   {
     id: "agents",
@@ -59,6 +62,7 @@ const TOOLS: {
     desc: "Memory, email, Slack, image-gen and agent bus.",
     icon: Network,
     view: "agents",
+    tag: "Automate",
   },
   {
     id: "tasks",
@@ -66,6 +70,7 @@ const TOOLS: {
     desc: "Plan, queue and track autonomous runs.",
     icon: ListChecks,
     view: "tasks",
+    tag: "Plan",
   },
   {
     id: "approvals",
@@ -73,6 +78,7 @@ const TOOLS: {
     desc: "Review and approve high-risk actions.",
     icon: ShieldCheck,
     view: "approvals",
+    tag: "Review",
   },
   {
     id: "integrations",
@@ -80,6 +86,7 @@ const TOOLS: {
     desc: "Connect tools, providers and services.",
     icon: Puzzle,
     view: "integrations",
+    tag: "Connect",
   },
 ];
 
@@ -206,23 +213,33 @@ export function CommandHubShell({
               <button
                 key={tool.id}
                 onClick={() => onNavigate(tool.view)}
-                className="group flex flex-col gap-3 rounded-xl border border-border-muted bg-surface-3 p-4 text-left transition-all hover:border-accent-primary/40 hover:shadow-glow-primary"
+                className="group relative flex flex-col gap-3 overflow-hidden rounded-xl border border-border-muted bg-surface-3 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-accent-primary/40 hover:shadow-glow-primary"
               >
+                <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent-primary/60 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
                 <div className="flex items-start justify-between">
-                  <span className="grid h-9 w-9 place-items-center rounded-lg border border-border-muted bg-surface-2 text-accent-primary">
-                    <Icon className="h-4 w-4" />
-                  </span>
-                  <span className="grid h-7 w-7 place-items-center rounded-md bg-accent-secondary text-white opacity-90 transition-opacity group-hover:opacity-100">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-10 w-10 place-items-center rounded-lg border border-accent-primary/25 bg-surface-2 text-accent-primary shadow-glow-primary">
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span className="rounded-md border border-border-muted bg-surface-2 px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wider text-accent-secondary">
+                      {tool.tag}
+                    </span>
+                  </div>
+                  <span className="grid h-7 w-7 place-items-center rounded-md bg-accent-secondary text-white opacity-90 transition-all group-hover:scale-110 group-hover:opacity-100">
                     <ArrowUpRight className="h-4 w-4" />
                   </span>
                 </div>
-                <div>
+                <div className="mt-1">
                   <div className="text-sm font-bold uppercase tracking-wide text-text-primary">
                     {tool.title}
                   </div>
                   <div className="mt-1 text-xs leading-relaxed text-text-secondary">
                     {tool.desc}
                   </div>
+                </div>
+                <div className="mt-auto flex items-center gap-1 text-[0.65rem] font-semibold uppercase tracking-wider text-accent-primary opacity-0 transition-opacity group-hover:opacity-100">
+                  Open tool
+                  <ArrowUpRight className="h-3 w-3" />
                 </div>
               </button>
             );
