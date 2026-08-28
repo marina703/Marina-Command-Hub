@@ -12,7 +12,13 @@ import {
   Paperclip,
   BarChart3,
   Lock,
-  Minus,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Maximize2,
+  Minimize2,
+  X,
   ArrowUpRight,
   Sparkle,
   Code2,
@@ -134,6 +140,9 @@ export function CommandHubShell({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
+  const [chatPopout, setChatPopout] = useState(false);
+  const [navCollapsed, setNavCollapsed] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -185,15 +194,37 @@ export function CommandHubShell({
     [sending, scrollToBottom],
   );
 
+  const renderMessages = (withScrollRef = false) => (
+    <div ref={withScrollRef ? messagesRef : undefined} className="flex-1 space-y-3 overflow-y-auto p-4" style={{ maxHeight: "calc(100vh - 20rem)" }}>
+      {messages.length === 0 && <div className="rounded-xl border border-border-muted bg-surface-3/70 p-3 text-sm text-text-primary stone-surface">Ask anything or pick a tool to get started.</div>}
+      {messages.map((m) => <div key={m.id} className={`max-w-[90%] rounded-lg border px-3 py-2 text-sm ${m.type === "user" ? "ml-auto border-accent-secondary/40 bg-accent-secondary text-white" : "border-border-muted bg-surface-3/70 text-text-primary stone-surface"}`}>{m.text}</div>)}
+      {sending && <div className="flex items-center gap-2 text-xs text-text-muted"><span className="h-3 w-3 animate-spin rounded-full border border-accent-primary border-t-transparent" />Command AI is thinking…</div>}
+    </div>
+  );
+
+  const renderComposer = () => (
+    <div className="border-t border-border-muted p-3">
+      <div className="flex items-center gap-2 rounded-lg border border-accent-primary/40 bg-surface-3/80 px-3 py-2 shadow-glow-primary">
+        <Sparkle className="h-4 w-4 shrink-0 text-accent-primary" />
+        <input aria-label="Command AI prompt" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void runChat(input); }} placeholder="Ask anything or give a command..." className="min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted" />
+        <button onClick={() => void runChat(input)} disabled={sending || !input.trim()} className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-accent-secondary text-white shadow-glow-secondary disabled:opacity-50" title="Send command" aria-label="Send command"><Send className="h-4 w-4" /></button>
+      </div>
+      <div className="mt-2 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-text-muted"><Paperclip className="h-3.5 w-3.5" /><BarChart3 className="h-3.5 w-3.5" /></div>
+        <div className="flex items-center gap-1 text-[0.6rem] text-text-muted"><Lock className="h-2.5 w-2.5" />AI responses may be inaccurate. Verify important information.</div>
+      </div>
+    </div>
+  );
+
   const renderHome = () => (
     <div className="flex flex-col gap-6">
       {/* Heading */}
       <div className="relative">
         <div className="pointer-events-none absolute inset-0 -z-10 opacity-40 [background:linear-gradient(rgba(0,214,208,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(0,214,208,0.06)_1px,transparent_1px)] [background-size:44px_44px]" />
-        <h1 className="text-3xl font-extrabold uppercase tracking-wide text-text-primary sm:text-4xl">
+        <h1 className="font-display text-3xl font-black uppercase tracking-[-0.04em] text-text-primary sm:text-5xl">
           Your Command Hub, In One Place
         </h1>
-        <p className="mt-1 text-xs font-medium uppercase tracking-[0.2em] text-text-secondary">
+        <p className="mt-2 text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary">
           AI command center for your workflows
         </p>
       </div>
@@ -201,7 +232,7 @@ export function CommandHubShell({
       {/* One-click tools */}
       <section>
         <div className="mb-3 flex items-center gap-3">
-          <h2 className="text-xs font-bold uppercase tracking-[0.25em] text-accent-primary">
+          <h2 className="font-display text-sm font-black uppercase tracking-wide text-accent-primary">
             One-click tools
           </h2>
           <span className="h-px flex-1 bg-gradient-to-r from-accent-primary/40 to-transparent" />
@@ -213,7 +244,7 @@ export function CommandHubShell({
               <button
                 key={tool.id}
                 onClick={() => onNavigate(tool.view)}
-                className="group relative flex flex-col gap-3 overflow-hidden rounded-xl border border-border-muted bg-surface-3 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-accent-primary/40 hover:shadow-glow-primary"
+                className="group stone-surface relative flex flex-col gap-3 overflow-hidden rounded-xl border border-border-muted bg-surface-3/65 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-accent-primary/40 hover:shadow-glow-primary"
               >
                 <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent-primary/60 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
                 <div className="flex items-start justify-between">
@@ -230,7 +261,7 @@ export function CommandHubShell({
                   </span>
                 </div>
                 <div className="mt-1">
-                  <div className="text-sm font-bold uppercase tracking-wide text-text-primary">
+                  <div className="font-display text-sm font-black uppercase tracking-wide text-text-primary">
                     {tool.title}
                   </div>
                   <div className="mt-1 text-xs leading-relaxed text-text-secondary">
@@ -248,13 +279,13 @@ export function CommandHubShell({
       </section>
 
       {/* Command composer */}
-      <section className="relative overflow-hidden rounded-2xl border border-accent-primary/40 bg-surface-3/80 p-5 shadow-glow-primary">
+      <section className="stone-surface relative overflow-hidden rounded-2xl border border-accent-primary/40 bg-surface-3/65 p-5 shadow-glow-primary backdrop-blur-2xl">
         <div className="flex items-start gap-4">
           <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-accent-primary/50 bg-surface-2">
             <Sparkle className="h-5 w-5 text-accent-primary" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-lg font-bold text-text-primary">
+            <h3 className="font-display text-lg font-black text-text-primary">
               What would you like to get done?
             </h3>
             <p className="mt-0.5 text-[0.7rem] font-bold uppercase tracking-[0.2em] text-accent-secondary">
@@ -290,19 +321,17 @@ export function CommandHubShell({
   return (
     <div className="flex min-h-[calc(100vh-2rem)] gap-4">
       {/* Left navigation rail */}
-      <aside className="hidden w-56 shrink-0 flex-col gap-1 rounded-2xl border border-border-muted bg-surface-2/80 p-3 md:flex">
-        <div className="mb-3 flex items-center gap-2.5 px-2 pt-1">
-          <div className="grid h-9 w-9 place-items-center rounded-lg border border-accent-primary/50 bg-gradient-to-br from-accent-primary/20 to-accent-secondary/20">
-            <Sparkle className="h-4 w-4 text-accent-primary" />
-          </div>
-          <div className="leading-tight">
-            <div className="text-sm font-extrabold uppercase tracking-wide text-text-primary">
-              Command
+      <aside className={`hidden shrink-0 flex-col gap-1 rounded-2xl border border-border-muted bg-surface-2/70 p-3 stone-surface backdrop-blur-2xl transition-[width] duration-300 md:flex ${navCollapsed ? "w-[76px]" : "w-56"}`}>
+        <div className={`mb-3 flex items-center border-b border-white/10 px-1 pb-4 pt-1 ${navCollapsed ? "justify-center" : "justify-between"}`}>
+          <div className="flex items-center gap-2.5">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-accent-primary/50 bg-gradient-to-br from-accent-primary/20 to-accent-secondary/20 shadow-glow-primary">
+              <Sparkle className="h-4 w-4 text-accent-primary" />
             </div>
-            <div className="text-sm font-extrabold uppercase tracking-wide text-text-primary">
-              Hub
-            </div>
+            {!navCollapsed && <div className="leading-tight"><div className="font-display text-sm font-black uppercase tracking-wide text-text-primary">Command</div><div className="font-display text-sm font-black uppercase tracking-wide text-text-primary">Hub</div></div>}
           </div>
+          <button onClick={() => setNavCollapsed((value) => !value)} className="grid h-8 w-8 place-items-center rounded-lg border border-border-muted text-text-secondary transition hover:border-accent-primary/45 hover:text-accent-primary" title={navCollapsed ? "Expand navigation" : "Collapse navigation"} aria-label={navCollapsed ? "Expand navigation" : "Collapse navigation"}>
+            {navCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </button>
         </div>
 
         <nav className="flex flex-col gap-1">
@@ -316,24 +345,27 @@ export function CommandHubShell({
                   setActiveNav(item.id);
                   if (item.view && item.view !== "home") onNavigate(item.view);
                 }}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                title={navCollapsed ? item.label : undefined}
+                aria-label={item.label}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors ${navCollapsed ? "justify-center px-0" : ""} ${
                   active
-                    ? "border border-accent-primary/40 bg-surface-4 text-accent-primary shadow-glow-primary"
+                    ? "border border-accent-primary/40 bg-accent-primary/10 text-accent-primary shadow-glow-primary"
                     : "text-text-secondary hover:bg-surface-3 hover:text-text-primary"
                 }`}
               >
-                <Icon className="h-4 w-4" />
-                {item.label}
+                <Icon className="h-4 w-4 shrink-0" />
+                {!navCollapsed && item.label}
               </button>
             );
           })}
         </nav>
 
-        <div className="mt-auto rounded-lg border border-border-muted bg-surface-3 p-3">
-          <div className="flex items-center gap-1.5 text-[0.7rem] text-text-secondary">
-            <span className="h-1.5 w-1.5 rounded-full bg-status-success" />
-            All systems active
+        <div className={`mt-auto rounded-lg border border-border-muted bg-surface-3/70 p-3 ${navCollapsed ? "grid place-items-center px-2" : ""}`} title={navCollapsed ? "All systems active" : undefined}>
+          <div className="flex items-center gap-1.5 text-[0.7rem] font-semibold text-text-secondary">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-success shadow-[0_0_10px_rgba(67,209,122,0.95)]" />
+            {!navCollapsed && "All systems active"}
           </div>
+          {!navCollapsed && <p className="mt-2 text-[0.65rem] leading-relaxed text-text-muted">Ready when connected services are available.</p>}
         </div>
       </aside>
 
@@ -341,100 +373,50 @@ export function CommandHubShell({
       <main className="min-w-0 flex-1">{renderHome()}</main>
 
       {/* Right COMMAND AI panel */}
-      {chatOpen && (
-        <aside className="flex w-[320px] shrink-0 flex-col rounded-2xl border border-border-muted bg-surface-2/90 shadow-card">
-          <div className="flex items-center justify-between border-b border-border-muted p-4">
-            <div className="flex items-center gap-2">
-              <Sparkle className="h-4 w-4 text-accent-primary" />
-              <div className="leading-tight">
-                <div className="text-sm font-bold uppercase tracking-wide text-accent-primary">
-                  Command AI
-                </div>
-                <div className="text-[0.65rem] text-text-secondary">
-                  Your AI co-pilot for getting things done.
-                </div>
+      {chatOpen ? (
+        <aside className={`hidden shrink-0 flex-col rounded-2xl border border-border-muted bg-surface-2/70 shadow-card stone-surface backdrop-blur-2xl transition-[width] duration-300 lg:flex ${chatCollapsed ? "w-[76px]" : "w-[320px]"}`}>
+          {chatCollapsed ? (
+            <div className="flex h-full flex-col items-center gap-4 py-3">
+              <button onClick={() => setChatCollapsed(false)} className="grid h-9 w-9 place-items-center rounded-lg border border-accent-primary/40 bg-accent-primary/10 text-accent-primary shadow-glow-primary" title="Expand Command AI" aria-label="Expand Command AI"><PanelRightOpen className="h-4 w-4" /></button>
+              <div className="flex flex-1 flex-col items-center justify-center gap-3">
+                <span className="writing-mode-vertical rounded-full border border-accent-secondary/30 bg-accent-secondary/10 px-2 py-3 text-[0.62rem] font-black uppercase tracking-[0.2em] text-accent-secondary">AI</span>
+                <button onClick={() => setChatPopout((value) => !value)} className="grid h-9 w-9 place-items-center rounded-lg border border-border-muted text-text-secondary transition hover:border-accent-secondary/50 hover:text-accent-secondary" title="Open Command AI pop-out" aria-label="Open Command AI pop-out"><Maximize2 className="h-4 w-4" /></button>
               </div>
             </div>
-            <button
-              onClick={() => setChatOpen(false)}
-              className="grid h-7 w-7 place-items-center rounded-md border border-border-muted text-text-secondary hover:text-text-primary"
-            >
-              <Minus className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div
-            ref={messagesRef}
-            className="flex-1 space-y-3 overflow-y-auto p-4"
-            style={{ maxHeight: "calc(100vh - 20rem)" }}
-          >
-            {messages.length === 0 && (
-              <div className="rounded-xl border border-border-muted bg-surface-3 p-3 text-sm text-text-secondary">
-                Ask anything or pick a tool to get started.
+          ) : (
+            <>
+              <div className="flex items-center justify-between border-b border-border-muted p-3.5">
+                <div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg border border-accent-primary/35 bg-accent-primary/10 text-accent-primary"><Sparkle className="h-4 w-4" /></span><div className="leading-tight"><div className="font-display text-sm font-black uppercase tracking-wide text-accent-primary">Command AI</div><div className="text-[0.65rem] text-text-secondary">Your AI co-pilot for getting things done.</div></div></div>
+                <div className="flex items-center gap-1"><button onClick={() => setChatPopout((value) => !value)} className="grid h-7 w-7 place-items-center rounded-md border border-border-muted text-text-secondary transition hover:border-accent-secondary/45 hover:text-accent-secondary" title="Open pop-out window" aria-label="Open pop-out window"><Maximize2 className="h-3.5 w-3.5" /></button><button onClick={() => setChatCollapsed(true)} className="grid h-7 w-7 place-items-center rounded-md border border-border-muted text-text-secondary transition hover:border-accent-primary/45 hover:text-accent-primary" title="Collapse Command AI" aria-label="Collapse Command AI"><PanelRightClose className="h-3.5 w-3.5" /></button><button onClick={() => { setChatOpen(false); setChatPopout(false); }} className="grid h-7 w-7 place-items-center rounded-md border border-border-muted text-text-secondary transition hover:border-accent-secondary/45 hover:text-accent-secondary" title="Close Command AI" aria-label="Close Command AI"><X className="h-3.5 w-3.5" /></button></div>
               </div>
-            )}
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`max-w-[90%] rounded-lg border px-3 py-2 text-sm ${
-                  m.type === "user"
-                    ? "ml-auto border-accent-secondary/40 bg-accent-secondary text-white"
-                    : "border-border-muted bg-surface-3 text-text-primary"
-                }`}
-              >
-                {m.text}
-              </div>
-            ))}
-            {sending && (
-              <div className="flex items-center gap-2 text-xs text-text-muted">
-                <span className="h-3 w-3 animate-spin rounded-full border border-accent-primary border-t-transparent" />
-                Command AI is thinking…
-              </div>
-            )}
-          </div>
-
-          <div className="border-t border-border-muted p-3">
-            <div className="flex items-center gap-2 rounded-lg border border-accent-primary/40 bg-surface-3 px-3 py-2 shadow-glow-primary">
-              <Sparkle className="h-4 w-4 shrink-0 text-accent-primary" />
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") runChat(input);
-                }}
-                placeholder="Ask anything or give a command..."
-                className="min-w-0 flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
-              />
-              <button
-                onClick={() => runChat(input)}
-                disabled={sending}
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-accent-secondary text-white disabled:opacity-50"
-              >
-                <Send className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="mt-2 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-text-muted">
-                <Paperclip className="h-3.5 w-3.5" />
-                <BarChart3 className="h-3.5 w-3.5" />
-              </div>
-              <div className="flex items-center gap-1 text-[0.6rem] text-text-muted">
-                <Lock className="h-2.5 w-2.5" />
-                AI responses may be inaccurate. Verify important information.
-              </div>
-            </div>
-          </div>
+              {renderMessages(true)}
+              {renderComposer()}
+            </>
+          )}
         </aside>
+      ) : (
+        <button onClick={() => setChatOpen(true)} className="fixed right-20 top-6 z-40 grid h-11 w-11 place-items-center rounded-full border border-accent-primary/50 bg-[#061014]/90 text-accent-primary shadow-glow-primary backdrop-blur-xl transition hover:scale-105 hover:border-accent-secondary/60 hover:text-accent-secondary" title="Open Command AI" aria-label="Open Command AI"><Sparkle className="h-4 w-4" /></button>
       )}
 
-      {/* Mobile fallback: open full dashboard */}
-      <button
-        onClick={onOpenFullDashboard}
-        className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full border border-accent-primary/40 bg-surface-3 px-4 py-2 text-sm font-semibold text-accent-primary shadow-glow-primary md:hidden"
-      >
-        <LayoutDashboard className="h-4 w-4" />
-        Full Dashboard
-      </button>
+      {chatPopout && <div className="fixed bottom-5 right-5 z-50 flex h-[min(560px,calc(100vh-2.5rem))] w-[min(420px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-accent-primary/45 bg-[#050b0e]/92 shadow-[0_24px_90px_rgba(0,0,0,0.68),0_0_36px_rgba(0,214,208,0.14)] backdrop-blur-2xl"><div className="flex items-center justify-between border-b border-border-muted p-3.5"><div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg border border-accent-primary/35 bg-accent-primary/10 text-accent-primary"><Sparkle className="h-4 w-4" /></span><div className="leading-tight"><div className="font-display text-sm font-black uppercase tracking-wide text-accent-primary">Command AI</div><div className="text-[0.65rem] text-text-secondary">Pop-out command window</div></div></div><div className="flex items-center gap-1"><button onClick={() => setChatPopout(false)} className="grid h-7 w-7 place-items-center rounded-md border border-border-muted text-text-secondary transition hover:border-accent-secondary/45 hover:text-accent-secondary" title="Close pop-out" aria-label="Close pop-out"><Minimize2 className="h-3.5 w-3.5" /></button><button onClick={() => { setChatOpen(false); setChatPopout(false); }} className="grid h-7 w-7 place-items-center rounded-md border border-border-muted text-text-secondary transition hover:border-accent-secondary/45 hover:text-accent-secondary" title="Close Command AI" aria-label="Close Command AI"><X className="h-3.5 w-3.5" /></button></div></div>{renderMessages(false)}{renderComposer()}</div>}
+
+      {/* Mobile fallback: Command AI + full dashboard, stacked so they never overlap */}
+      <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2 md:hidden">
+        <button
+          onClick={() => setChatPopout(true)}
+          className="flex items-center gap-2 rounded-full border border-accent-secondary/40 bg-surface-3 px-4 py-2 text-sm font-semibold text-accent-secondary shadow-glow-secondary"
+        >
+          <Sparkle className="h-4 w-4" />
+          Command AI
+        </button>
+        <button
+          onClick={onOpenFullDashboard}
+          className="flex items-center gap-2 rounded-full border border-accent-primary/40 bg-surface-3 px-4 py-2 text-sm font-semibold text-accent-primary shadow-glow-primary"
+        >
+          <LayoutDashboard className="h-4 w-4" />
+          Full Dashboard
+        </button>
+      </div>
     </div>
   );
 }
