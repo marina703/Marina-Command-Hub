@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   LayoutDashboard,
+  Home,
   Bot,
   ListChecks,
   Globe,
@@ -63,6 +64,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Workspace",
     items: [
+      { id: "home", label: "Home", icon: <Home className="h-4 w-4" /> },
       { id: "dashboard", label: "Command Hub", icon: <LayoutDashboard className="h-4 w-4" /> },
       { id: "assistant", label: "AI Assistant", icon: <Bot className="h-4 w-4" /> },
       { id: "tasks", label: "Task Hub", icon: <ListChecks className="h-4 w-4" /> },

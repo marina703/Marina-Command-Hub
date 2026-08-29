@@ -26,4 +26,5 @@ export { CodeGenPanel } from "./CodeGenPanel";
 export { DocumentGenPanel } from "./DocumentGenPanel";
 export { AgentToolsPanel } from "./AgentToolsPanel";
 export { CommandHubShell } from "./CommandHubShell";
+export { GeminiSyncPanel } from "./GeminiSyncPanel";
 export { LoginPage } from "./LoginPage";

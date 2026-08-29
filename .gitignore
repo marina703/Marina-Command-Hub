@@ -19,3 +19,6 @@ logs/
 # Personal exports / transient data (not source code)
 copilot-chat-history-last6days.md
 agent/src/components/dashboard/phases stats.json
+
+# Local backup folder (Skales session artifacts)
+.skales-backup/

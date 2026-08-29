@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
-import { getConfig, runAutonomousLoop, sendChat } from "@/lib/api";
+import { getConfig, runAutonomousLoop, runPlaybook, sendChat } from "@/lib/api";
 import type { LLMConfig, LogEntry, PresetConfig } from "@/types";
 
 import {
@@ -33,6 +33,8 @@ import {
   DocumentGenPanel,
   AgentToolsPanel,
   CommandHubShell,
+  GeminiSyncPanel,
+  PlaybookBar,
 } from "@/components/dashboard";
 import type { ViewId } from "@/components/dashboard/Sidebar";
 import type { ChatMessage } from "@/components/dashboard/AssistantConsole";
@@ -215,6 +217,24 @@ export default function App() {
     [handleAddMessage, refresh],
   );
 
+  /** Runs a playbook via /api/playbooks/run and toasts the result. */
+  const handleRunPlaybook = useCallback(
+    async (id: string, prompt?: string) => {
+      try {
+        const res = await runPlaybook(id, prompt);
+        if (res.ok) {
+          toast.success(res.message || `Playbook ${id} completed`);
+          void refresh();
+        } else {
+          toast.error(res.message || `Playbook ${id} failed`);
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Playbook failed");
+      }
+    },
+    [refresh],
+  );
+
   const handleToggleStream = useCallback(() => setStreaming((s) => !s), []);
   const handleClearLogs = useCallback(() => setLogs([]), []);
 
@@ -346,6 +366,12 @@ export default function App() {
 
           {activeView === "dashboard" && (
             <>
+              <div className="mb-4">
+                <ErrorBoundary label="Playbook bar">
+                  <PlaybookBar onRun={handleRunPlaybook} />
+                </ErrorBoundary>
+              </div>
+
               <div id="hub-workspace-panels" className="mb-4 scroll-mt-24">
                 <ErrorBoundary label="Workspace panels">
                   <WorkspacePanels onRefresh={refresh} />
@@ -493,16 +519,9 @@ export default function App() {
           )}
 
           {activeView === "geminiSync" && (
-            <div className="rounded-2xl border border-border-muted bg-surface-2 p-6 text-center shadow-card">
-              <h2 className="mb-2 text-lg font-bold text-text-primary">
-                Gemini Sync
-              </h2>
-              <p className="text-sm text-text-secondary">
-                Sync your chat history and context with Gemini. This panel is
-                ready for integration with the existing /api/gemini/sync
-                endpoint.
-              </p>
-            </div>
+            <ErrorBoundary label="Gemini Sync">
+              <GeminiSyncPanel chats={messages} />
+            </ErrorBoundary>
           )}
 
           {activeView === "models" && (
