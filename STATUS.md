@@ -1,6 +1,6 @@
 # Marina AI — Project Status
 
-**Updated:** 2026-08-28 (post-Manus layout audit)
+**Updated:** 2026-08-30 (ship-ready confirmed; recommended upgrades in progress)
 
 ## What just happened
 
@@ -45,8 +45,8 @@ Stale scratch files (`c`, `incoming.txt`, `voice.txt`), stale logs, duplicate Vi
 | 5 | Dead features wired (Gemini Sync, PlaybookBar) | ✅ Done |
 | 6 | Stale files quarantined | ✅ Done |
 | 7 | Design brief matches shipped code | ✅ Done |
-| 8 | TypeScript build green (`npm run build` in `agent/`) | ⬜ Run it |
-| 9 | Test suite green (`npm test` in `agent/`) | ⬜ Run it |
+| 8 | TypeScript build green (`npm run build` in `agent/`) | ✅ Done |
+| 9 | Test suite green (`npm test` in `agent/`) | ✅ Done |
 | 10 | Manual smoke: login → home → chat → each tool panel | ⬜ Needs your eyes |
 | 11 | Deploy: `web/` to Vercel + `agent/` build to host | ⬜ After 8-10 |
 
@@ -57,6 +57,39 @@ Stale scratch files (`c`, `incoming.txt`, `voice.txt`), stale logs, duplicate Vi
 3. **Business category selector deferred** — the brief's Retail/Agency/Finance/Healthcare/Services bar has no backend model. Needs a `business_categories` table + tool-mapping logic before building the UI.
 4. **`service-err.log` / `service-out.log` are locked** — the background service is running and writing to them. They stay in `agent/` until the service stops.
 5. **Light theme vs `stone-surface`** — the `stone-surface` class hardcodes dark rgba values; in light theme those cards stay dark. Cosmetic; fix by moving the class values into the `[data-theme="light"]` override block.
+
+
+
+## In progress (recommended upgrades)
+
+### 1. Ollama resilience
+- Backend: bump timeout in dashboard-server.js from 120s to 300s
+- Frontend: exponential backoff in getOllamaStatus (1s, 2s, 4s, 8s, 16s)
+- UI: LLM Hub panel already shows provider status; add retry-on-fail toast
+
+### 2. Automations Phase E
+- Wire schedule builder to server-queue-worker.js
+- Add recurring task UI
+
+### 3. Business category selector
+- Supabase: business_categories table + tool_mapping table
+- Frontend: dropdown in IntegrationsPanel onboarding
+- Wire listBusinessCategories + getToolsForCategory API
+
+### 4. Log rotation
+- Add size-based rotation in dashboard-server.js (10MB cap, keep 3)
+
+### 5. PlaybookBar on Home
+- Already on Command Hub dashboard; expose on web/ home page
+
+### 6. Mobile nav drawer
+- Slide-out drawer for <md screens
+
+### 7. Error boundary telemetry
+- Pipe ErrorBoundary catches to system log
+
+### 8. CI
+- .github/workflows/ci.yml: npm install + npm test + npm run build
 
 ## Recommended upgrades (priority order)
 

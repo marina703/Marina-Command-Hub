@@ -145,7 +145,7 @@ function getOllamaStatus() {
         hostname: parsed.hostname,
         port: parsed.port || 11434,
         path: "/api/version",
-        timeout: 3000,
+        timeout: 15000,
       },
       (res) => {
         let data = "";
@@ -164,7 +164,7 @@ function getOllamaStatus() {
               hostname: parsed.hostname,
               port: parsed.port || 11434,
               path: "/api/ps",
-              timeout: 3000,
+              timeout: 15000,
             },
             (res2) => {
               let data2 = "";
