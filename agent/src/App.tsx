@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import {
+  Sparkle,
+  Lock,
+  ArrowUpRight,
+  Code2,
+  FileText,
+  Network,
+  ListChecks,
+  ShieldCheck,
+  Puzzle,
+  type LucideIcon,
+} from "lucide-react";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/hooks/useWorkspace";
@@ -7,13 +19,6 @@ import { getConfig, runAutonomousLoop, runPlaybook, sendChat } from "@/lib/api";
 import type { LLMConfig, LogEntry, PresetConfig } from "@/types";
 
 import {
-  Sidebar,
-  TopNav,
-  ControlPanel,
-  SystemLogViewer,
-  RunHistoryTable,
-  CommandPalette,
-  AssistantConsole,
   ModelHub,
   TaskBoard,
   IdeationHub,
@@ -22,7 +27,6 @@ import {
   ServicesMonitor,
   ProjectsPanel,
   CommandHubUpdates,
-  CommandHubHeader,
   WorkspacePanels,
   ApprovalInbox,
   SecurityPanel,
@@ -35,8 +39,13 @@ import {
   CommandHubShell,
   GeminiSyncPanel,
   PlaybookBar,
+  AssistantConsole,
+  ControlPanel,
+  SystemLogViewer,
+  RunHistoryTable,
+  CommandPalette,
 } from "@/components/dashboard";
-import type { ViewId } from "@/components/dashboard/Sidebar";
+import type { ViewId } from "@/components/dashboard/views";
 import type { ChatMessage } from "@/components/dashboard/AssistantConsole";
 import type { TaskItem } from "@/types";
 import { LoginPage } from "@/components/dashboard/LoginPage";
@@ -50,6 +59,73 @@ const DEFAULT_CONTROL: ControlPanelValues = {
   maxTokens: 2048,
   duration: 30,
 };
+
+/** One-click tool cards shown on the home view. */
+const TOOLS: {
+  id: string;
+  title: string;
+  desc: string;
+  icon: LucideIcon;
+  view: ViewId;
+  tag: string;
+}[] = [
+  {
+    id: "codegen",
+    title: "CODE GENERATION",
+    desc: "Scaffold projects and generate code from a spec.",
+    icon: Code2,
+    view: "codegen",
+    tag: "Build",
+  },
+  {
+    id: "docgen",
+    title: "DOCUMENTS",
+    desc: "Create .docx, .xlsx, .pdf and slide decks.",
+    icon: FileText,
+    view: "docgen",
+    tag: "Create",
+  },
+  {
+    id: "agents",
+    title: "AGENT TOOLS",
+    desc: "Memory, email, Slack, image-gen and agent bus.",
+    icon: Network,
+    view: "agents",
+    tag: "Automate",
+  },
+  {
+    id: "tasks",
+    title: "TASK HUB",
+    desc: "Plan, queue and track autonomous runs.",
+    icon: ListChecks,
+    view: "tasks",
+    tag: "Plan",
+  },
+  {
+    id: "approvals",
+    title: "APPROVALS",
+    desc: "Review and approve high-risk actions.",
+    icon: ShieldCheck,
+    view: "approvals",
+    tag: "Review",
+  },
+  {
+    id: "integrations",
+    title: "INTEGRATIONS",
+    desc: "Connect tools, providers and services.",
+    icon: Puzzle,
+    view: "integrations",
+    tag: "Connect",
+  },
+];
+
+/** Suggested prompts shown in the home command composer. */
+const SUGGESTED = [
+  "Scaffold a new project",
+  "Create a document",
+  "Run an agent task",
+  "Summarize my workspace",
+];
 
 /** Convert raw dashboard log strings into structured LogEntry objects. */
 function toLogEntries(raw: string[]): LogEntry[] {
@@ -309,307 +385,362 @@ export default function App() {
     );
   }
 
+  /** Content rendered inside the shell for the active view. */
+  const renderView = () => {
+    switch (activeView) {
+      case "home":
+        return (
+          <div className="flex flex-col gap-6">
+            {/* Heading */}
+            <div className="relative">
+              <div className="pointer-events-none absolute inset-0 -z-10 opacity-40 [background:linear-gradient(rgba(0,214,208,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(0,214,208,0.06)_1px,transparent_1px)] [background-size:44px_44px]" />
+              <h1 className="font-display text-3xl font-black uppercase tracking-[-0.04em] text-text-primary sm:text-5xl">
+                Your Command Hub, In One Place
+              </h1>
+              <p className="mt-2 text-xs font-semibold uppercase tracking-[0.2em] text-text-secondary">
+                AI command center for your workflows
+              </p>
+            </div>
+
+            {/* Quick stats strip */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {(data?.quickStats ?? []).slice(0, 4).map((stat) => (
+                <div
+                  key={stat.label}
+                  className={`stone-surface rounded-xl border p-4 ${
+                    stat.accent === "pink"
+                      ? "border-accent-secondary/30"
+                      : "border-accent-primary/30"
+                  }`}
+                >
+                  <p
+                    className={`font-display text-2xl font-black ${
+                      stat.accent === "pink"
+                        ? "text-accent-secondary"
+                        : "text-accent-primary"
+                    }`}
+                  >
+                    {stat.value}
+                  </p>
+                  <p className="mt-1 text-[0.62rem] font-bold uppercase tracking-[0.18em] text-text-secondary">
+                    {stat.label}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* One-click tools */}
+            <section>
+              <div className="mb-3 flex items-center gap-3">
+                <h2 className="font-display text-sm font-black uppercase tracking-wide text-accent-primary">
+                  One-click tools
+                </h2>
+                <span className="h-px flex-1 bg-gradient-to-r from-accent-primary/40 to-transparent" />
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {TOOLS.map((tool) => {
+                  const Icon = tool.icon;
+                  return (
+                    <button
+                      key={tool.id}
+                      onClick={() => setActiveView(tool.view)}
+                      className="group stone-surface relative flex flex-col gap-3 overflow-hidden rounded-xl border border-border-muted bg-surface-3/65 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-accent-primary/40 hover:shadow-glow-primary"
+                    >
+                      <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent-primary/60 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="grid h-10 w-10 place-items-center rounded-lg border border-accent-primary/25 bg-surface-2 text-accent-primary shadow-glow-primary">
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          <span className="rounded-md border border-border-muted bg-surface-2 px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wider text-accent-secondary">
+                            {tool.tag}
+                          </span>
+                        </div>
+                        <span className="grid h-7 w-7 place-items-center rounded-md bg-accent-secondary text-white opacity-90 transition-all group-hover:scale-110 group-hover:opacity-100">
+                          <ArrowUpRight className="h-4 w-4" />
+                        </span>
+                      </div>
+                      <div className="mt-1">
+                        <div className="font-display text-sm font-black uppercase tracking-wide text-text-primary">
+                          {tool.title}
+                        </div>
+                        <div className="mt-1 text-xs leading-relaxed text-text-secondary">
+                          {tool.desc}
+                        </div>
+                      </div>
+                      <div className="mt-auto flex items-center gap-1 text-[0.65rem] font-semibold uppercase tracking-wider text-accent-primary opacity-0 transition-opacity group-hover:opacity-100">
+                        Open tool
+                        <ArrowUpRight className="h-3 w-3" />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* Command composer */}
+            <section className="stone-surface relative overflow-hidden rounded-2xl border border-accent-primary/40 bg-surface-3/65 p-5 shadow-glow-primary backdrop-blur-2xl">
+              <div className="flex items-start gap-4">
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-accent-primary/50 bg-surface-2">
+                  <Sparkle className="h-5 w-5 text-accent-primary" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-display text-lg font-black text-text-primary">
+                    What would you like to get done?
+                  </h3>
+                  <p className="mt-0.5 text-[0.7rem] font-bold uppercase tracking-[0.2em] text-accent-secondary">
+                    Ask Command Hub anything
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {SUGGESTED.map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => void handleSendPrompt(s)}
+                        className="rounded-full border border-border-muted bg-surface-2 px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-accent-primary/40 hover:text-text-primary"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 flex items-center gap-1.5 text-[0.65rem] text-text-muted">
+                <Lock className="h-3 w-3" />
+                AI responses may be inaccurate. Verify important information.
+              </div>
+            </section>
+          </div>
+        );
+
+      case "dashboard":
+        return (
+          <div className="flex flex-col gap-4">
+            <div className="mb-1">
+              <PlaybookBar onRun={handleRunPlaybook} />
+            </div>
+
+            <div id="hub-workspace-panels" className="scroll-mt-24">
+              <WorkspacePanels onRefresh={refresh} />
+            </div>
+
+            <OperationsShelf
+              workspaceId={auth.session ? "default" : null}
+              onRefresh={refresh}
+            />
+
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="flex flex-col gap-4 lg:col-span-2">
+                {loading ? (
+                  <SkeletonGrid count={5} />
+                ) : (
+                  <SystemMetrics system={data?.system ?? {}} />
+                )}
+
+                <SystemLogViewer
+                  logs={logs}
+                  streaming={streaming}
+                  onToggleStream={handleToggleStream}
+                  onClear={handleClearLogs}
+                />
+
+                <div id="hub-run-history" className="contents scroll-mt-24">
+                  <RunHistoryTable runs={runs} loading={loading} />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                <ControlPanel
+                  values={control}
+                  onChange={setControl}
+                  presets={presets}
+                  onSavePreset={handleSavePreset}
+                  onLoadPreset={handleLoadPreset}
+                  onDeletePreset={handleDeletePreset}
+                />
+
+                <div id="hub-services-monitor" className="contents scroll-mt-24">
+                  <ServicesMonitor services={data?.services ?? []} />
+                </div>
+
+                <CommandHubUpdates
+                  updates={data?.commandHubUpdates ?? []}
+                  onRefresh={refresh}
+                />
+              </div>
+            </div>
+          </div>
+        );
+
+      case "assistant":
+        return (
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <AssistantConsole
+                onMessage={handleAddMessage}
+                onRefresh={refresh}
+              />
+              <div className="mt-4 flex flex-col gap-2">
+                {messages.map((m) => (
+                  <div
+                    key={m.id}
+                    className={`rounded-xl border p-3 text-sm ${
+                      m.type === "user"
+                        ? "border-accent-primary/40 bg-accent-primary/5 text-text-primary"
+                        : "border-border-muted bg-surface-2 text-text-secondary"
+                    }`}
+                  >
+                    <span className="mb-1 block text-[0.65rem] font-semibold uppercase tracking-wider text-text-muted">
+                      {m.type === "user" ? "You" : "AI Team"}
+                    </span>
+                    {m.text}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col gap-4">
+              <IdeationHub ideas={data?.brainstormIdeas ?? []} onRefresh={refresh} />
+              <MeetingsPanel meetings={data?.meetingAgenda ?? []} onRefresh={refresh} />
+            </div>
+          </div>
+        );
+
+      case "tasks":
+        return selectedTask ? (
+          <TaskDetail
+            task={selectedTask}
+            onBack={() => setSelectedTask(null)}
+            onRefresh={refresh}
+          />
+        ) : (
+          <TaskBoard
+            tasks={data?.tasks ?? []}
+            completed={data?.completedHistory ?? []}
+            loading={loading}
+            onRefresh={refresh}
+            onSelectTask={setSelectedTask}
+          />
+        );
+
+      case "taskDetail":
+        return selectedTask ? (
+          <TaskDetail
+            task={selectedTask}
+            onBack={() => setSelectedTask(null)}
+            onRefresh={refresh}
+          />
+        ) : (
+          <TaskBoard
+            tasks={data?.tasks ?? []}
+            completed={data?.completedHistory ?? []}
+            loading={loading}
+            onRefresh={refresh}
+            onSelectTask={setSelectedTask}
+          />
+        );
+
+      case "projects":
+        return (
+          <ProjectsPanel projects={data?.projects ?? []} onRefresh={refresh} />
+        );
+
+      case "geminiSync":
+        return <GeminiSyncPanel chats={messages} />;
+
+      case "models":
+        return <ModelHub config={config} onConfigChange={setConfig} />;
+
+      case "system":
+        return (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <SystemMetrics system={data?.system ?? {}} />
+            <ServicesMonitor services={data?.services ?? []} />
+          </div>
+        );
+
+      case "approvals":
+        return <ApprovalInbox onRefresh={refresh} />;
+
+      case "security":
+        return <SecurityPanel />;
+
+      case "integrations":
+        return <IntegrationsPanel />;
+
+      case "codegen":
+        return (
+          <CodeGenPanel
+            workspaceId={auth.session ? "default" : null}
+            session={auth.session}
+          />
+        );
+
+      case "docgen":
+        return (
+          <DocumentGenPanel
+            workspaceId={auth.session ? "default" : null}
+            session={auth.session}
+          />
+        );
+
+      case "agents":
+        return (
+          <AgentToolsPanel
+            workspaceId={auth.session ? "default" : null}
+            session={auth.session}
+          />
+        );
+
+      case "automations":
+        return (
+          <div className="rounded-2xl border border-border-muted bg-surface-2 p-6 text-center shadow-card">
+            <h2 className="mb-2 text-lg font-bold text-text-primary">
+              Automations
+            </h2>
+            <p className="mb-4 text-sm text-text-secondary">
+              Durable scheduled workflows require a persistent scheduler
+              backend. This feature is planned for Phase E and is not yet
+              enabled.
+            </p>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-status-warning/30 bg-status-warning/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-status-warning">
+              Not enabled
+            </span>
+            <p className="mt-4 text-xs text-text-muted">
+              Automations will support: schedule builder, durable run history,
+              pause/resume, templates, idempotency, bounded retries,
+              dead-letter states, and per-workspace concurrency — backed by a
+              durable queue, not a browser tab.
+            </p>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-surface-1 text-text-primary">
-      {activeView === "home" ? (
-        <div className="mx-auto max-w-[1600px] p-3 sm:p-4">
-          <CommandHubShell
-            onNavigate={setActiveView}
-            onOpenFullDashboard={() => setActiveView("dashboard")}
-          />
-        </div>
-      ) : (
-      <div className="mx-auto flex max-w-[1600px] gap-4 p-3 sm:p-4">
-        <ErrorBoundary label="Sidebar">
-          <Sidebar
-            activeView={activeView}
-            onNavigate={setActiveView}
-            onLock={handleLock}
-            onSignOut={auth.signOut}
-            data={data}
-            user={auth.user}
-          />
-        </ErrorBoundary>
-
-        <main className="min-w-0 flex-1">
-          <ErrorBoundary label="Top navigation">
-            <TopNav
-              theme={theme}
-              onToggleTheme={toggleTheme}
-              onOpenCommandPalette={() => setPaletteOpen(true)}
-              onRunTasks={handleRunTasks}
-              online={online}
-            />
-          </ErrorBoundary>
-
-          {error && (
-            <div className="mb-4 rounded-xl border border-status-error/40 bg-status-error/10 p-4 text-sm text-status-error">
-              Failed to load dashboard: {error}
-            </div>
-          )}
-
-          <div className="mb-4">
-            <ErrorBoundary label="Command Hub header">
-              <CommandHubHeader
-                taskCount={data?.tasks?.length ?? 0}
-                workspaceCount={1}
-                activeWorkspaceCount={1}
-                executionQueue={0}
-                pendingQueue={0}
-                state={data?.mode ?? "FLUID"}
-                onRunWorkspace={handleRunTasks}
-                onRefresh={refresh}
-                onSend={handleSendPrompt}
-              />
-            </ErrorBoundary>
+      <div className="mx-auto max-w-[1600px] p-3 sm:p-4">
+        {error && (
+          <div className="mb-4 rounded-xl border border-status-error/40 bg-status-error/10 p-4 text-sm text-status-error">
+            Failed to load dashboard: {error}
           </div>
+        )}
 
-          {activeView === "dashboard" && (
-            <>
-              <div className="mb-4">
-                <ErrorBoundary label="Playbook bar">
-                  <PlaybookBar onRun={handleRunPlaybook} />
-                </ErrorBoundary>
-              </div>
-
-              <div id="hub-workspace-panels" className="mb-4 scroll-mt-24">
-                <ErrorBoundary label="Workspace panels">
-                  <WorkspacePanels onRefresh={refresh} />
-                </ErrorBoundary>
-              </div>
-
-              <div className="mb-4">
-                <ErrorBoundary label="Operations shelf">
-                  <OperationsShelf
-                    workspaceId={auth.session ? "default" : null}
-                    onRefresh={refresh}
-                  />
-                </ErrorBoundary>
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-3">
-                <div className="flex flex-col gap-4 lg:col-span-2">
-                  <ErrorBoundary label="System metrics">
-                    {loading ? (
-                      <SkeletonGrid count={5} />
-                    ) : (
-                      <SystemMetrics system={data?.system ?? {}} />
-                    )}
-                  </ErrorBoundary>
-
-                  <ErrorBoundary label="System log">
-                    <SystemLogViewer
-                      logs={logs}
-                      streaming={streaming}
-                      onToggleStream={handleToggleStream}
-                      onClear={handleClearLogs}
-                    />
-                  </ErrorBoundary>
-
-                  <div id="hub-run-history" className="contents scroll-mt-24">
-                    <ErrorBoundary label="Run history">
-                      <RunHistoryTable runs={runs} loading={loading} />
-                    </ErrorBoundary>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-4">
-                  <ErrorBoundary label="Control panel">
-                    <ControlPanel
-                      values={control}
-                      onChange={setControl}
-                      presets={presets}
-                      onSavePreset={handleSavePreset}
-                      onLoadPreset={handleLoadPreset}
-                      onDeletePreset={handleDeletePreset}
-                    />
-                  </ErrorBoundary>
-
-                  <div
-                    id="hub-services-monitor"
-                    className="contents scroll-mt-24"
-                  >
-                    <ErrorBoundary label="Services">
-                      <ServicesMonitor services={data?.services ?? []} />
-                    </ErrorBoundary>
-                  </div>
-
-                  <ErrorBoundary label="Command Hub updates">
-                    <CommandHubUpdates
-                      updates={data?.commandHubUpdates ?? []}
-                      onRefresh={refresh}
-                    />
-                  </ErrorBoundary>
-                </div>
-              </div>
-            </>
-          )}
-
-          {activeView === "assistant" && (
-            <div className="grid gap-4 lg:grid-cols-3">
-              <div className="lg:col-span-2">
-                <ErrorBoundary label="Assistant console">
-                  <AssistantConsole
-                    onMessage={handleAddMessage}
-                    onRefresh={refresh}
-                  />
-                </ErrorBoundary>
-                <div className="mt-4 flex flex-col gap-2">
-                  {messages.map((m) => (
-                    <div
-                      key={m.id}
-                      className={`rounded-xl border p-3 text-sm ${
-                        m.type === "user"
-                          ? "border-accent-primary/40 bg-accent-primary/5 text-text-primary"
-                          : "border-border-muted bg-surface-2 text-text-secondary"
-                      }`}
-                    >
-                      <span className="mb-1 block text-[0.65rem] font-semibold uppercase tracking-wider text-text-muted">
-                        {m.type === "user" ? "You" : "AI Team"}
-                      </span>
-                      {m.text}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="flex flex-col gap-4">
-                <ErrorBoundary label="Ideation hub">
-                  <IdeationHub
-                    ideas={data?.brainstormIdeas ?? []}
-                    onRefresh={refresh}
-                  />
-                </ErrorBoundary>
-                <ErrorBoundary label="Meetings">
-                  <MeetingsPanel
-                    meetings={data?.meetingAgenda ?? []}
-                    onRefresh={refresh}
-                  />
-                </ErrorBoundary>
-              </div>
-            </div>
-          )}
-
-          {activeView === "tasks" && (
-            <ErrorBoundary label="Task board">
-              {selectedTask ? (
-                <TaskDetail
-                  task={selectedTask}
-                  onBack={() => setSelectedTask(null)}
-                  onRefresh={refresh}
-                />
-              ) : (
-                <TaskBoard
-                  tasks={data?.tasks ?? []}
-                  completed={data?.completedHistory ?? []}
-                  loading={loading}
-                  onRefresh={refresh}
-                  onSelectTask={setSelectedTask}
-                />
-              )}
-            </ErrorBoundary>
-          )}
-
-          {activeView === "projects" && (
-            <ErrorBoundary label="Projects">
-              <ProjectsPanel
-                projects={data?.projects ?? []}
-                onRefresh={refresh}
-              />
-            </ErrorBoundary>
-          )}
-
-          {activeView === "geminiSync" && (
-            <ErrorBoundary label="Gemini Sync">
-              <GeminiSyncPanel chats={messages} />
-            </ErrorBoundary>
-          )}
-
-          {activeView === "models" && (
-            <ErrorBoundary label="Model hub">
-              <ModelHub config={config} onConfigChange={setConfig} />
-            </ErrorBoundary>
-          )}
-
-          {activeView === "system" && (
-            <div className="grid gap-4 lg:grid-cols-2">
-              <ErrorBoundary label="System metrics">
-                <SystemMetrics system={data?.system ?? {}} />
-              </ErrorBoundary>
-              <ErrorBoundary label="Services">
-                <ServicesMonitor services={data?.services ?? []} />
-              </ErrorBoundary>
-            </div>
-          )}
-
-          {activeView === "approvals" && (
-            <ErrorBoundary label="Approval queue">
-              <ApprovalInbox onRefresh={refresh} />
-            </ErrorBoundary>
-          )}
-
-          {activeView === "security" && (
-            <ErrorBoundary label="Settings & security">
-              <SecurityPanel />
-            </ErrorBoundary>
-          )}
-
-          {activeView === "integrations" && (
-            <ErrorBoundary label="Integrations & tools">
-              <IntegrationsPanel />
-            </ErrorBoundary>
-          )}
-
-          {activeView === "codegen" && (
-            <ErrorBoundary label="Code Generation">
-              <CodeGenPanel
-                workspaceId={auth.session ? "default" : null}
-                session={auth.session}
-              />
-            </ErrorBoundary>
-          )}
-
-          {activeView === "docgen" && (
-            <ErrorBoundary label="Document Generation">
-              <DocumentGenPanel
-                workspaceId={auth.session ? "default" : null}
-                session={auth.session}
-              />
-            </ErrorBoundary>
-          )}
-
-          {activeView === "agents" && (
-            <ErrorBoundary label="Agent Tools">
-              <AgentToolsPanel
-                workspaceId={auth.session ? "default" : null}
-                session={auth.session}
-              />
-            </ErrorBoundary>
-          )}
-
-          {activeView === "automations" && (
-            <div className="rounded-2xl border border-border-muted bg-surface-2 p-6 text-center shadow-card">
-              <h2 className="mb-2 text-lg font-bold text-text-primary">
-                Automations
-              </h2>
-              <p className="mb-4 text-sm text-text-secondary">
-                Durable scheduled workflows require a persistent scheduler
-                backend. This feature is planned for Phase E and is not yet
-                enabled.
-              </p>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-status-warning/30 bg-status-warning/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-status-warning">
-                Not enabled
-              </span>
-              <p className="mt-4 text-xs text-text-muted">
-                Automations will support: schedule builder, durable run history,
-                pause/resume, templates, idempotency, bounded retries,
-                dead-letter states, and per-workspace concurrency — backed by a
-                durable queue, not a browser tab.
-              </p>
-            </div>
-          )}
-        </main>
+        <CommandHubShell
+          activeView={activeView}
+          onNavigate={setActiveView}
+          onOpenCommandPalette={() => setPaletteOpen(true)}
+          online={online}
+          onLock={handleLock}
+          onSignOut={auth.signOut}
+          userEmail={auth.user?.email ?? null}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+        >
+          {renderView()}
+        </CommandHubShell>
       </div>
-      )}
 
       <ErrorBoundary label="Command palette">
         <CommandPalette

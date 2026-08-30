@@ -11,7 +11,7 @@ import {
   Settings,
   FileText,
 } from "lucide-react";
-import type { ViewId } from "./Sidebar";
+import type { ViewId } from "./views";
 
 export interface CommandPaletteProps {
   open: boolean;
